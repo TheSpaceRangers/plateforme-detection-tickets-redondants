@@ -1,0 +1,16 @@
+# ML data and model artifacts must stay local.
+.env
+*.env
+data/raw/
+data/processed/
+data/exports/
+models/
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.xlsx
+*.joblib
+*.pkl
+*.dump
+*.sqlite

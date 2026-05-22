@@ -1,0 +1,235 @@
+{
+  "$schema": "https://opencode.ai/schemas/agent-metadata.json",
+  "schema_version": "1.0.0",
+  "description": "Métadonnées centralisées des agents du projet SYNAPPSE — Plateforme de détection de tickets redondants.",
+  "agents": {
+    "project-manager": {
+      "id": "project-manager",
+      "name": "Project Manager",
+      "category": "primary",
+      "type": "agent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "primary",
+        "vision",
+        "roadmap",
+        "coordination"
+      ],
+      "dependencies": [
+        "skill:project-management",
+        "context:project/overview",
+        "context:project/planning"
+      ],
+      "alias": "Napoleon"
+    },
+    "scrum-master": {
+      "id": "scrum-master",
+      "name": "Scrum Master",
+      "category": "primary",
+      "type": "agent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "primary",
+        "agile",
+        "sprints",
+        "coordination"
+      ],
+      "dependencies": [
+        "skill:scrum",
+        "context:project/overview",
+        "context:project/planning"
+      ],
+      "alias": "Eisenhower"
+    },
+    "devops-engineer": {
+      "id": "devops-engineer",
+      "name": "DevOps Engineer",
+      "category": "subagents",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "devops",
+        "ci-cd",
+        "github",
+        "infrastructure"
+      ],
+      "dependencies": [
+        "skill:devops"
+      ],
+      "alias": "Tesla"
+    },
+    "tech-lead": {
+      "id": "tech-lead",
+      "name": "Tech Lead",
+      "category": "subagents",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "quality",
+        "review",
+        "architecture",
+        "coordination"
+      ],
+      "dependencies": [
+        "skill:tech-lead",
+        "context:technical/stack",
+        "context:technical/architecture"
+      ],
+      "alias": "Turing"
+    },
+    "compliance-lead": {
+      "id": "compliance-lead",
+      "name": "Compliance Lead",
+      "category": "subagents",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "compliance",
+        "security",
+        "rgpd",
+        "coordination"
+      ],
+      "dependencies": [
+        "skill:compliance-lead",
+        "context:domain/rgpd"
+      ],
+      "alias": "Montesquieu"
+    },
+    "backend-engineer": {
+      "id": "backend-engineer",
+      "name": "Backend Engineer",
+      "category": "subagents/engineering",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "backend",
+        "fastapi",
+        "postgresql",
+        "python"
+      ],
+      "dependencies": [
+        "skill:backend-engineering",
+        "context:technical/stack",
+        "context:technical/architecture"
+      ],
+      "alias": "Von Neumann"
+    },
+    "frontend-engineer": {
+      "id": "frontend-engineer",
+      "name": "Frontend Engineer",
+      "category": "subagents/engineering",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "frontend",
+        "react",
+        "vite",
+        "shadcn",
+        "tailwind"
+      ],
+      "dependencies": [
+        "skill:frontend-engineering",
+        "context:technical/stack"
+      ],
+      "alias": "Da Vinci"
+    },
+    "ml-engineer": {
+      "id": "ml-engineer",
+      "name": "ML Engineer",
+      "category": "subagents/engineering",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "ml",
+        "python",
+        "scikit-learn",
+        "nlp",
+        "pipeline"
+      ],
+      "dependencies": [
+        "skill:ml-engineering",
+        "context:domain/halopsa",
+        "context:technical/stack"
+      ],
+      "alias": "Curie"
+    },
+    "qa-engineer": {
+      "id": "qa-engineer",
+      "name": "QA Engineer",
+      "category": "subagents/engineering",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "qa",
+        "testing",
+        "pytest",
+        "validation"
+      ],
+      "dependencies": [
+        "skill:qa"
+      ],
+      "alias": "Descartes"
+    },
+    "cybersecurity-engineer": {
+      "id": "cybersecurity-engineer",
+      "name": "Cybersecurity Engineer",
+      "category": "subagents/compliance",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "security",
+        "owasp",
+        "audit",
+        "read-only"
+      ],
+      "dependencies": [
+        "skill:cybersecurity",
+        "context:technical/stack"
+      ],
+      "alias": "Sun Tzu"
+    },
+    "rgpd-engineer": {
+      "id": "rgpd-engineer",
+      "name": "RGPD Engineer",
+      "category": "subagents/compliance",
+      "type": "subagent",
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "tags": [
+        "rgpd",
+        "iso27001",
+        "compliance",
+        "read-only"
+      ],
+      "dependencies": [
+        "skill:rgpd",
+        "context:domain/rgpd"
+      ],
+      "alias": "Voltaire"
+    }
+  },
+  "defaults": {
+    "agent": {
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "type": "agent",
+      "tags": []
+    },
+    "subagent": {
+      "version": "1.0.0",
+      "author": "Charles TRONEL",
+      "type": "subagent",
+      "tags": []
+    }
+  }
+}

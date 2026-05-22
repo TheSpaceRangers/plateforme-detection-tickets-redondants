@@ -1,0 +1,45 @@
+# Local secrets and environment files: examples are allowed, real values are not.
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!**/.env.example
+
+# Dependency and virtual environment directories.
+node_modules/
+.opencode/node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Python bytecode.
+*.pyc
+
+# Database dumps, local databases and extracted datasets must stay outside Git.
+*.dump
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+dumps/
+exports/
+datasets/
+data/raw/
+data/processed/
+data/exports/
+**/data/raw/
+**/data/processed/
+**/data/exports/
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.xlsx
+*.xls
+
+# Generated build artifacts.
+dist/
+build/
