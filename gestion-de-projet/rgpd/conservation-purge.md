@@ -10,11 +10,12 @@
 
 | Catégorie de données | Durée de conservation | Point de départ | Justification |
 |---|---|---|---|
-| **Tickets pseudonymisés en PostgreSQL** | **12 mois** | Date d'extraction initiale | Cycle d'entraînement ML (pipeline reproductible) + démonstration soutenance + batterie de tests |
-| **Logs de prédiction** (scores, ids tickets, timestamp) | **Durée du projet + 6 mois** | Date de première prédiction | Traçabilité des alertes pour audit — pas de texte brut dans les logs |
-| **Données brutes HaloPSA** (avant transformation) | **24 heures max** | Date d'extraction | Fenêtre technique nécessaire à la pseudonymisation — jamais persistées au-delà |
-| **Modèle ML sérialisé** (joblib) | **Durée du projet + 1 an** | Date de sérialisation | Reproductibilité des résultats pour le mémoire |
-| **Jeux de données ML** (train/test/val) | **Durée du projet** | Date de split | Démonstration et reproductibilité — pas de PII après pseudonymisation |
+| **Tickets pseudonymisés en PostgreSQL** | **J+7 post-soutenance maximum** | Date de soutenance | Usage limité à l'évaluation académique et purge rapide après démonstration |
+| **Logs de prédiction** (scores, ids pseudonymes, timestamp) | **J+7 post-soutenance maximum** | Date de soutenance | Traçabilité sans texte brut, secret, email, nom, téléphone ni détail de ticket |
+| **Données brutes HaloPSA** (avant transformation) | **Non persistées** ; 24h maximum uniquement en incident documenté | Date d'extraction | Transformation immédiate ; purge obligatoire de tout résidu temporaire |
+| **Modèle ML sérialisé** (joblib) | **J+7 post-soutenance maximum si entraîné sur données réelles** | Date de soutenance | Artefact dérivé des tickets, donc inclus dans la purge |
+| **Jeux de données ML** (train/test/val) | **J+7 post-soutenance maximum** | Date de soutenance | Datasets pseudonymisés mais non anonymes |
+| **Backups, dumps, volumes Docker, exports, caches** | **J+7 post-soutenance maximum** | Date de soutenance | Toute copie ou dérivé des données est inclus dans la purge |
 | **Mémoire PDF et annexes** | **Permanent** (anonymisé) | Dépôt mémoire | Engagement académique — vérifier absence totale de PII avant dépôt |
 | **Journal des purges** | **2 ans post-soutenance** | Date de purge | Preuve de conformité pour tout audit ultérieur (Art. 5.2 — Responsabilité) |
 
@@ -40,75 +41,20 @@ Toutes les données suivantes sont définitivement supprimées :
 - [ ] Logs d'extraction : tout fichier contenant des données HaloPSA brutes
 - [ ] Logs de prédiction : `predictions_logs` table
 - [ ] Artefacts ML : modèles joblib, vectorizers, encoders
+- [ ] Backups, dumps SQL, exports CSV/JSON, volumes Docker, caches applicatifs et fichiers temporaires
+- [ ] Jeux de données train/test/validation et tout dérivé contenant des identifiants pseudonymes
 
 ### 2.3 Ce qui est conservé après purge
 
-- Le code source (backend, frontend, ml) — aucune PII
-- Les fichiers de documentation (registre, stratégie, etc.) — aucune PII
+- Le code source (backend, frontend, ml) — sous réserve de contrôle d'absence de PII, secrets et données réelles
+- Les fichiers de documentation (registre, stratégie, etc.) — sous réserve qu'ils ne contiennent aucune PII ni secret
 - Les métriques et rapports d'évaluation — valeurs agrégées
 - Les captures d'écran du dashboard — vérifiées sans PII
 - Le journal de purge — preuve documentaire
 
-### 2.4 Script de purge (référence)
+### 2.4 Modalités de purge — sans code applicatif
 
-```python
-"""
-purge.py — Exécuté post-soutenance pour purge complète.
-Usage : python purge.py --confirm
-"""
-
-import os
-import shutil
-import psycopg2
-from datetime import datetime
-
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "dbname": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-}
-
-DIRS_TO_PURGE = [
-    "ml/data/raw",
-    "ml/data/processed",
-    "ml/models",
-]
-
-def purge_database():
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor()
-    tables = ["tickets", "predictions_logs", "training_logs"]
-    for table in tables:
-        cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
-    conn.commit()
-    cur.close()
-    conn.close()
-    print(f"[{datetime.now()}] Base de données purgée.")
-
-def purge_files():
-    for d in DIRS_TO_PURGE:
-        if os.path.exists(d):
-            shutil.rmtree(d)
-            os.makedirs(d, exist_ok=True)
-            print(f"[{datetime.now()}] Dossier {d} purgé.")
-
-def write_purge_log():
-    with open("gestion-de-projet/rgpd/purge-log.txt", "w") as f:
-        f.write(f"PURGE EXECUTED: {datetime.now().isoformat()}\n")
-        f.write("Toutes les données de production ont été supprimées.\n")
-        f.write("Seuls le code source et la documentation sont conservés.\n")
-
-if __name__ == "__main__":
-    import sys
-    if "--confirm" not in sys.argv:
-        print("DRY RUN — Aucune action effectuée. Passez --confirm pour exécuter.")
-        sys.exit(0)
-    purge_database()
-    purge_files()
-    write_purge_log()
-    print("Purge terminée. Attestation : gestion-de-projet/rgpd/purge-log.txt")
-```
+La purge doit être exécutée selon une procédure opératoire validée, sans intégrer de code applicatif dans ce document. Elle doit couvrir : base PostgreSQL, datasets, modèles, logs, backups, dumps, volumes Docker, exports, caches et fichiers temporaires. Le journal de purge ne doit contenir aucune donnée sensible : uniquement date, périmètre purgé, responsable, résultat, anomalies éventuelles et référence de preuve.
 
 ---
 
@@ -118,7 +64,7 @@ Le mémoire devra contenir un engagement écrit similaire à :
 
 > **Engagement de suppression des données**
 >
-> Conformément à l'article 5.1.e du RGPD, l'ensemble des données extraites de l'API HaloPSA dans le cadre du projet SYNAPPSE sont conservées au maximum jusqu'à la date de soutenance (octobre 2026).
+> Conformément à l'article 5.1.e du RGPD, l'ensemble des données extraites de l'API HaloPSA dans le cadre du projet SYNAPPSE sont conservées au maximum jusqu'à J+7 post-soutenance.
 >
 > Une purge complète est exécutée dans les 7 jours suivant la soutenance :
 > - Suppression de la base PostgreSQL contenant les tickets pseudonymisés
@@ -127,7 +73,7 @@ Le mémoire devra contenir un engagement écrit similaire à :
 >
 > Seul le code source et la documentation technique (exempts de PII) sont conservés à titre de preuve académique.
 >
-> Le journal de purge est archivé dans le dépôt GitHub pour justification.
+> Le journal de purge est conservé comme preuve documentaire uniquement s'il ne contient aucune donnée sensible, aucun secret et aucun identifiant réel ou pseudonyme exploitable.
 
 ---
 

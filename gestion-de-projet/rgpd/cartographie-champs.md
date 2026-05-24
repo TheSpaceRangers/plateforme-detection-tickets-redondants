@@ -26,8 +26,8 @@ Seuls ces deux endpoints sont nécessaires à la détection de redondance.
 | 3 | `details` | String (long) | Description longue de l'incident | **Oui** | Noms, emails, téléphones, adresses IP, noms de machines, identifiants locaux | Troncature 2000 car. + nettoyage regex PII |
 | 4 | `client_id` | Integer | Identifiant du client ESSMS | **Non** | — | Aucune — donnée agrégée |
 | 5 | `site_id` | Integer | Identifiant du site client | **Non** | — | Aucune — donnée agrégée |
-| 6 | `user_id` | Integer | Identifiant du contact demandeur | **Oui** | Identifiant interne → lien possible avec personne physique | Pseudonymisation SHA-256 + sel |
-| 7 | `agent_id` | Integer | Identifiant du technicien assigné | **Partiel** | Identifiant interne d'un professionnel | Conservé tel quel (professionnel), pseudonymisable si nécessaire |
+| 6 | `user_id` | Integer | Identifiant du contact demandeur | **Oui** | Identifiant interne → lien possible avec personne physique | Pseudonymisation HMAC-SHA-256 avant stockage |
+| 7 | `agent_id` | Integer | Identifiant du technicien assigné | **Oui** | Identifiant interne d'un professionnel identifiable | Exclu par défaut ; pseudonymisation HMAC-SHA-256 si nécessité métier validée |
 | 8 | `tickettype_id` | Integer | Type de ticket | **Non** | — | Aucune |
 | 9 | `category_1` | String | Catégorie niveau 1 | **Non** | — | Aucune |
 | 10 | `category_2` | String | Catégorie niveau 2 | **Non** | — | Aucune |
@@ -57,7 +57,8 @@ Seuls ces deux endpoints sont nécessaires à la détection de redondance.
 
 | Champ | Méthode | Détail |
 |---|---|---|
-| `user_id` | Hachage SHA-256 avec sel local | Déterministe, non réversible. Voir `strategie-pseudonymisation.md` |
+| `user_id` | HMAC-SHA-256 avec secret local | Déterministe, pseudonyme, non réversible sans secret. Voir `strategie-pseudonymisation.md` |
+| `agent_id` | Exclusion ou HMAC-SHA-256 | Exclu par défaut ; même protection que `user_id` si conservation indispensable |
 
 ### 4.2 Nettoyage obligatoire
 
@@ -75,6 +76,7 @@ Seuls ces deux endpoints sont nécessaires à la détection de redondance.
 | `client_name` | Non nécessaire à la détection de redondance |
 | `site_name` | Non nécessaire |
 | `agent_name` | Non nécessaire |
+| `agent_id` | Exclu par défaut si aucune fonctionnalité validée ne requiert l'affectation technicien |
 | Notes internes | Non exposées par l'endpoint Tickets |
 
 ---
@@ -96,17 +98,24 @@ HaloPSA API                        PostgreSQL (pseudonymisé)
 [Nettoyage summary + details]              │
     │  regex PII                           │
     ▼                                      │
-[Pseudonymisation user_id]                 │
-    │  SHA-256(sel + user_id)              │
+[Pseudonymisation user_id / agent_id si retenu]
+    │  HMAC-SHA-256(secret, identifiant)   │
     ▼                                      │
 [Stockage PostgreSQL] ──────────────────────┘
     │
     ▼
 [Pipeline ML / API / UI]
-    │  Données déjà anonymisées
+    │  Données pseudonymisées, non anonymisées
     ▼
 [Utilisation exploitation]
 ```
+
+## 5.1 Contrôle résiduel avant stockage
+
+- Le nettoyage PII de `summary` et `details` est appliqué avant toute persistance.
+- Une passe de contrôle résiduel doit vérifier l'absence d'emails, téléphones, adresses, IP et noms évidents après nettoyage.
+- Tout échec de contrôle bloque le stockage du ticket concerné (`fail-closed`).
+- La pseudonymisation réduit le risque d'identification mais ne constitue pas une anonymisation RGPD : les données restent personnelles tant qu'une ré-identification indirecte est possible.
 
 ---
 

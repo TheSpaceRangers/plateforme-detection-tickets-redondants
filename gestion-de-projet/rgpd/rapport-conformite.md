@@ -1,16 +1,16 @@
 # Rapport de conformité RGPD — Synthèse Go/No-Go
 
 **Projet** : SYNAPPSE — Plateforme de détection de tickets redondants  
-**Mission** : P0 RGPD / Conformité — Sprint 1  
-**Date** : 2026-05-23  
-**Rédacteur** : Compliance Lead (Montesquieu)  
+**Mission** : US-GOV-001 — Corrections RGPD — Sprint 1  
+**Date** : 2026-05-24  
+**Rédacteur** : RGPD Engineer (Voltaire)  
 **Destinataire** : Scrum Master (Eisenhower)
 
 ---
 
 ## 1. Synthèse exécutive
 
-L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au périmètre défini par le Scrum Master (Sprint 1 — US-PM-001, US-PM-002). Les 6 livrables attendus ont été produits :
+Le retest US-GOV-001 a permis de corriger la documentation RGPD dans le périmètre autorisé. Les livrables sont documentés, mais plusieurs contrôles restent à implémenter et vérifier avant toute extraction réelle HaloPSA.
 
 | # | Livrable | Fichier | Statut |
 |---|---|---|---|
@@ -28,28 +28,28 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 | Aspect | Couvert ? |
 |---|---|
 | Identification des PII dans l'API HaloPSA | ✅ Complet |
-| Qualification de la base légale | ✅ Intérêt légitime (Art. 6.1.f) |
+| Qualification de la base légale | 📝 Intérêt légitime documenté (Art. 6.1.f), à valider avec autorisation client |
 | Registre de traitement | ✅ Complet |
-| Mesures de pseudonymisation | ✅ Documenté (SHA-256 + sel) |
+| Mesures de pseudonymisation | ✅ Documenté (HMAC-SHA-256 + secret obligatoire) |
 | Nettoyage des champs textuels | ✅ Documenté (regex PII) |
 | Minimisation des données collectées | ✅ Documenté |
 | Durées de conservation | ✅ Documenté |
 | Procédure de purge post-soutenance | ✅ Documenté |
-| Sécurité des credentials et secrets | ✅ Via `.env` + `.gitignore` |
+| Sécurité des credentials et secrets | 📝 Documenté ; preuve `.gitignore` / absence secrets à vérifier |
 | Transferts hors UE | ✅ Aucun — tout en local |
 
 ---
 
-## 3. Points de contrôle RGPD — Mise à jour
+## 3. Points de contrôle RGPD — US-GOV-001
 
 | # | Point | Statut Sprint 0 | Statut Sprint 1 | Évolution |
 |---|---|---|---|---|
-| PC-01 | Base légale identifiée | ✅ Validé | ✅ Validé | → inchangé |
-| PC-02 | Dictionnaire de données classifié | ✅ Validé | ✅ Validé | → inchangé |
-| PC-03 | Credentials API en variables d'environnement | ✅ Validé | ✅ Validé | → inchangé |
-| PC-04 | Troncature details à 2000 car. | ✅ Implémenté | ✅ Implémenté | → inchangé |
-| PC-05 | Pseudonymisation user_id | ⏳ À faire | ✅ Stratégie documentée | → ⬆️ Progression |
-| PC-06 | Nettoyage NLP du champ details | ⏳ À faire | ✅ Stratégie documentée | → ⬆️ Progression |
+| PC-01 | Base légale identifiée | ✅ Validé | 📝 Documenté | Test d'intérêt légitime formalisé |
+| PC-02 | Dictionnaire de données classifié | ✅ Validé | 📝 Documenté | `agent_id` requalifié comme donnée personnelle indirecte |
+| PC-03 | Credentials API en variables d'environnement | ✅ Validé | ⏳ À vérifier | Preuve `.env` / `.gitignore` requise |
+| PC-04 | Troncature details à 2000 car. | ✅ Implémenté | 📝 Documenté | Implémentation non vérifiée dans ce retest documentaire |
+| PC-05 | Pseudonymisation user_id | ⏳ À faire | 📝 Documenté | HMAC-SHA-256, secret obligatoire, fail-closed |
+| PC-06 | Nettoyage NLP du champ details | ⏳ À faire | 📝 Documenté | Contrôle résiduel requis avant stockage |
 | PC-07 | PostgreSQL accès localhost uniquement | ⏳ À faire | ⏳ À faire (non bloquant pour Go) | → inchangé |
 | PC-08 | .gitignore excluant .env et credentials | ⏳ À faire | ⏳ À vérifier (devops) | → inchangé |
 | PC-09 | Absence de données personnelles dans dataset final | ⏳ À faire | ⏳ Vérifiable après extraction | → inchangé |
@@ -60,7 +60,7 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 
 ## 4. Analyse des écarts résiduels
 
-### 4.1 Écarts non bloquants (à traiter pendant extraction)
+### 4.1 Écarts à lever avant extraction réelle
 
 | Écart | Impact | Action corrective | Responsable | Échéance |
 |---|---|---|---|---|
@@ -68,38 +68,40 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 | PC-08 — .gitignore incomplet | Moyen (risque d'erreur humaine) | Vérifier que `.env`, `*.pkl`, `data/raw/`, `__pycache__/` sont exclus | DevOps Engineer | Immédiat |
 | PC-09 — Absence PII dans dataset | Moyen | Ajouter test automatique de détection PII résiduelles après nettoyage | ML Engineer + QA | Sprint 2 |
 | PC-10 — Mention RGPD UI | Faible | Page "Mentions Légales" ou pop-up RGPD dans l'application web | Frontend Engineer | Sprint 4-5 |
+| Autorisation client + DPA HaloPSA | Élevé | Obtenir l'autorisation écrite client et référencer le DPA HaloPSA | Compliance Lead | Avant extraction |
+| `agent_id` | Moyen | Exclure par défaut ou pseudonymiser si nécessité métier documentée | Tech Lead / Backend | Avant extraction |
 
 ### 4.2 Écarts bloquants
 
-**Aucun écart bloquant identifié.** Tous les prérequis documentaires de conformité sont remplis.
+L'extraction réelle reste bloquée tant que les prérequis suivants ne sont pas vérifiés : autorisation client, DPA HaloPSA, absence de secrets/données réelles dans le dépôt, implémentation effective de la pseudonymisation et contrôle PII résiduel.
 
 ---
 
-## 5. Décision : ✅ GO — Extraction HaloPSA réelle autorisée
+## 5. Décision : ⚠️ GO documentaire conditionnel — extraction réelle non autorisée à ce stade
 
 ### 5.1 Conditions du Go
 
 | Condition | Statut | Remarque |
 |---|---|---|
-| Registre de traitement rédigé | ✅ | `registre-traitement.md` — complet |
-| Cartographie PII documentée | ✅ | `cartographie-champs.md` — 16 champs audités |
-| Stratégie de pseudonymisation définie | ✅ | `strategie-pseudonymisation.md` — SHA-256 + sel, regex PII |
+| Registre de traitement rédigé | 📝 | `registre-traitement.md` — rôles, autorisation client, DPA et test d'intérêt légitime ajoutés |
+| Cartographie PII documentée | 📝 | `cartographie-champs.md` — identifiants et `agent_id` requalifiés |
+| Stratégie de pseudonymisation définie | 📝 | `strategie-pseudonymisation.md` — HMAC-SHA-256 + secret, fail-closed |
 | Minimisation des données justifiée | ✅ | `minimisation-donnees.md` — 15 champs collectés, 6 exclus |
-| Durée de conservation fixée | ✅ | `conservation-purge.md` — 12 mois, purge automatisée |
-| Procédure de purge documentée | ✅ | Script `purge.py` + journal |
-| Pas de données personnelles dans le dépôt | ✅ | Dossier `rgpd/` contient uniquement de la documentation |
-| Hébergement 100% local | ✅ | Aucun cloud, aucune donnée sortante |
+| Durée de conservation fixée | 📝 | `conservation-purge.md` — J+7 post-soutenance maximum pour données et artefacts dérivés |
+| Procédure de purge documentée | 📝 | Procédure opératoire + journal sans données sensibles |
+| Pas de données personnelles dans le dépôt | ⏳ | À prouver par contrôle dédié ; aucune donnée réelle ne doit être ajoutée |
+| Hébergement 100% local | 📝 | Documenté, non vérifié techniquement dans ce retest |
 
 ### 5.2 Périmètre de l'autorisation
 
 | Action | Autorisée ? | Conditions |
 |---|---|---|
-| Extraction réelle GET /api/Tickets | ✅ **Oui** | Avec pseudonymisation immédiate avant stockage |
-| Stockage PostgreSQL des tickets | ✅ **Oui** | Uniquement les champs minimisés + nettoyés |
-| Utilisation des données pour ML | ✅ **Oui** | Uniquement après validation du dataset nettoyé (PC-09) |
+| Extraction réelle GET /api/Tickets | ❌ **Non** | Autorisée seulement après levée des prérequis et validation compliance |
+| Stockage PostgreSQL des tickets | ❌ **Non** | Autorisé seulement après pseudonymisation, nettoyage et contrôle résiduel vérifiés |
+| Utilisation des données pour ML | ❌ **Non** | Autorisée seulement après validation du dataset nettoyé (PC-09) |
 | Extraction des noms/prenoms utilisateurs (Users) | ❌ **Non** | Explicitement exclu par minimisation |
 | Export / copie des données brutes | ❌ **Non** | Pas de dump, pas de fichier CSV brut dans le repo |
-| Conservation au-delà de 12 mois | ❌ **Non** | Purge obligatoire post-soutenance |
+| Conservation au-delà de J+7 post-soutenance | ❌ **Non** | Purge obligatoire post-soutenance |
 
 ---
 
@@ -107,7 +109,7 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 
 ### 6.1 Court terme (Sprint 1-2)
 
-1. **Implémenter la pseudonymisation** dans le pipeline d'extraction (backend-engineer) — utiliser la fonction de référence dans `strategie-pseudonymisation.md`
+1. **Implémenter la pseudonymisation** dans le pipeline d'extraction (backend-engineer) — respecter la spécification HMAC-SHA-256 de `strategie-pseudonymisation.md`
 2. **Configurer `postgresql.conf`** en `listen_addresses = 'localhost'` (backend-engineer)
 3. **Vérifier `.gitignore`** : ajouter `data/raw/`, `*.pkl`, `data/processed/` si pas déjà fait (devops-engineer)
 4. **Tester les regex de nettoyage** sur un échantillon de tickets réels en aveugle (qa-engineer)
@@ -129,9 +131,9 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 
 | Blocage projet | Référence | Statut |
 |---|---|---|
-| Lot 2 — Extraction HaloPSA réelle | Dépendance critique STATUS.md | ✅ **Levée** (sous conditions) |
+| Lot 2 — Extraction HaloPSA réelle | Dépendance critique STATUS.md | ❌ Non levée — prérequis documentés mais non vérifiés |
 | Lot 3 — ML supervisé | Backlog — "Interdit tant que Lot 2 non validé" | ⏳ Partiellement — dépend encore de la vérification PC-09 et implémentation pseudonymisation |
-| Go Lot 2 — Gate global | `backlog.md` — Gate Go/No-Go | ✅ **Go prononcé** |
+| Go Lot 2 — Gate global | `backlog.md` — Gate Go/No-Go | ⚠️ GO documentaire conditionnel uniquement |
 
 ---
 
@@ -139,19 +141,20 @@ L'audit RGPD complet du projet SYNAPPSE a été réalisé conformément au péri
 
 | Statut | |
 |---|---|
-| ✅ **GO pour extraction HaloPSA réelle** | Tous les prérequis documentaires sont remplis — la conformité RGPD est couverte par les livrables produits. |
-| ⚠️ Écarts mineurs (PC-07, PC-08, PC-09) | À corriger pendant l'implémentation — ne bloquent pas le démarrage de l'extraction. |
-| ❌ Aucun écart bloquant | Aucun point P0 n'empêche le Go extraction. |
+| ⚠️ **GO documentaire conditionnel** | Les corrections US-GOV-001 sont documentées. |
+| ❌ **NO-GO extraction réelle à ce stade** | Les preuves et implémentations ne sont pas vérifiées. |
+| ⚠️ Écarts à lever | Autorisation client, DPA HaloPSA, secrets/.gitignore, absence données réelles, pseudonymisation, contrôle résiduel. |
 
 ### Décision finale
 
-> **Le Compliance Lead prononce un GO sous conditions pour l'extraction réelle HaloPSA.**
+> **Le RGPD Engineer constate un GO documentaire conditionnel, mais ne valide pas l'extraction réelle HaloPSA.**
 >
-> L'extraction peut démarrer immédiatement à condition que :
-> 1. La pseudonymisation de `user_id` soit implémentée AVANT la première extraction (SHA-256 + sel)
-> 2. Le nettoyage regex de `summary` et `details` soit appliqué AVANT stockage
-> 3. Aucun champ de la liste "exclus" (minimisation-donnees.md) ne soit collecté
-> 4. Les credentials HaloPSA soient dans `.env` et jamais dans le code
+> L'extraction ne pourra être envisagée qu'après preuve que :
+> 1. L'autorisation client et le DPA HaloPSA sont référencés
+> 2. La pseudonymisation HMAC-SHA-256 est implémentée avant stockage
+> 3. Le nettoyage et le contrôle PII résiduel sont effectifs
+> 4. `agent_id` est exclu ou pseudonymisé
+> 5. Les secrets sont hors dépôt, `.gitignore` couvre les artefacts à risque et aucune donnée réelle HaloPSA n'est présente
 
 ---
 
