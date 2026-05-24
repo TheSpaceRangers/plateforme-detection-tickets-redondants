@@ -12,18 +12,32 @@ node_modules/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.cache/
+.mypy_cache/
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 .venv/
 venv/
 
 # Python bytecode.
 *.pyc
 
+# OS and local logs.
+.DS_Store
+*.log
+logs/
+
 # Database dumps, local databases and extracted datasets must stay outside Git.
 *.dump
+*.backup
 *.sql
 *.sqlite
 *.sqlite3
 *.db
+postgres-data/
+pgdata/
+docker-data/
+volumes/
 dumps/
 exports/
 datasets/
@@ -43,3 +57,14 @@ data/exports/
 # Generated build artifacts.
 dist/
 build/
+
+# ML models and serialized artifacts.
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.h5
+models/
+**/models/
