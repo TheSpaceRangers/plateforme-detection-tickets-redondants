@@ -43,39 +43,39 @@ Avant toute extraction réelle, les contrôles suivants doivent être validés :
 
 ### Champs autorisés par défaut
 
-| Champ conceptuel | Usage | Justification |
-| --- | --- | --- |
-| `ticket_id_source` | Déduplication et traçabilité source | Nécessaire pour relier un ticket à sa source sans stocker le payload brut. |
-| `created_at` | Analyse temporelle | Utile pour filtrer les périodes et mesurer la fraîcheur des données. |
-| `updated_at` | Contrôle de synchronisation | Permet d'éviter les reprises inutiles. |
-| `category` | Similarité métier | Signal utile pour comparer des tickets proches. |
-| `subcategory` | Similarité métier fine | Améliore la précision sans identifier directement une personne. |
-| `status` | Qualité et filtrage | Permet d'exclure des tickets non pertinents. |
-| `priority` | Contexte de traitement | Signal métier non directement identifiant. |
-| `cleaned_title` | Similarité textuelle après nettoyage | Utilisé uniquement après suppression ou masquage des PII. |
-| `cleaned_description` | Similarité textuelle après nettoyage | Champ principal pour la détection, strictement nettoyé avant stockage. |
-| `data_retention_until` | Conservation limitée | Nécessaire pour piloter la purge J+7 post-soutenance. |
+| Champ conceptuel       | Usage                                | Justification                                                              |
+| ---------------------- | ------------------------------------ | -------------------------------------------------------------------------- |
+| `ticket_id_source`     | Déduplication et traçabilité source  | Nécessaire pour relier un ticket à sa source sans stocker le payload brut. |
+| `created_at`           | Analyse temporelle                   | Utile pour filtrer les périodes et mesurer la fraîcheur des données.       |
+| `updated_at`           | Contrôle de synchronisation          | Permet d'éviter les reprises inutiles.                                     |
+| `category`             | Similarité métier                    | Signal utile pour comparer des tickets proches.                            |
+| `subcategory`          | Similarité métier fine               | Améliore la précision sans identifier directement une personne.            |
+| `status`               | Qualité et filtrage                  | Permet d'exclure des tickets non pertinents.                               |
+| `priority`             | Contexte de traitement               | Signal métier non directement identifiant.                                 |
+| `cleaned_title`        | Similarité textuelle après nettoyage | Utilisé uniquement après suppression ou masquage des PII.                  |
+| `cleaned_description`  | Similarité textuelle après nettoyage | Champ principal pour la détection, strictement nettoyé avant stockage.     |
+| `data_retention_until` | Conservation limitée                 | Nécessaire pour piloter la purge J+7 post-soutenance.                      |
 
 ### Champs conditionnels
 
-| Champ conceptuel | Condition | Justification |
-| --- | --- | --- |
-| `agent_id_pseudo` | Uniquement si exception conformité validée | Permet des analyses opérationnelles sans conserver l'identifiant agent brut. |
-| `requester_domain_hash` | Uniquement si besoin métier validé | Agrégation possible sans stocker d'adresse complète. |
-| `site_or_customer_pseudo` | Uniquement si pseudonymisation validée | Peut aider à détecter des doublons locaux sans exposer le client. |
+| Champ conceptuel          | Condition                                  | Justification                                                                |
+| ------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `agent_id_pseudo`         | Uniquement si exception conformité validée | Permet des analyses opérationnelles sans conserver l'identifiant agent brut. |
+| `requester_domain_hash`   | Uniquement si besoin métier validé         | Agrégation possible sans stocker d'adresse complète.                         |
+| `site_or_customer_pseudo` | Uniquement si pseudonymisation validée     | Peut aider à détecter des doublons locaux sans exposer le client.            |
 
 ### Champs exclus
 
-| Champ exclu | Raison d'exclusion |
-| --- | --- |
-| `agent_id` | Exclu par défaut : identifiant personnel ou assimilable. |
-| nom, prénom, e-mail, téléphone | Données directement identifiantes non nécessaires au modèle. |
-| titre complet brut | Peut contenir des données personnelles ou confidentielles. |
-| description complète brute | Peut contenir des données personnelles, secrets, logs ou informations clients. |
-| pièces jointes | Risque élevé de données sensibles et hors périmètre Lot 2. |
-| commentaires internes bruts | Risque de données personnelles, secrets et informations confidentielles. |
-| en-têtes HTTP, tokens, cookies | Secrets ou éléments techniques sensibles. |
-| payload JSON brut | Interdit en stockage durable. |
+| Champ exclu                    | Raison d'exclusion                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `agent_id`                     | Exclu par défaut : identifiant personnel ou assimilable.                       |
+| nom, prénom, e-mail, téléphone | Données directement identifiantes non nécessaires au modèle.                   |
+| titre complet brut             | Peut contenir des données personnelles ou confidentielles.                     |
+| description complète brute     | Peut contenir des données personnelles, secrets, logs ou informations clients. |
+| pièces jointes                 | Risque élevé de données sensibles et hors périmètre Lot 2.                     |
+| commentaires internes bruts    | Risque de données personnelles, secrets et informations confidentielles.       |
+| en-têtes HTTP, tokens, cookies | Secrets ou éléments techniques sensibles.                                      |
+| payload JSON brut              | Interdit en stockage durable.                                                  |
 
 ## Dry-run sans persistance
 

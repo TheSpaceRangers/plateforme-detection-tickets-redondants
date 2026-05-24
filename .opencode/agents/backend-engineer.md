@@ -10,9 +10,11 @@ permission:
   list: allow
   edit:
     "*": deny
-    "backend/**": allow
     "**/*.env*": deny
     "**/*.key": deny
+    "backend/**": allow
+    "gestion-de-projet/architecture/**": allow
+    "gestion-de-projet/security/**": allow
   task: deny
   bash:
     "*": deny
@@ -43,7 +45,7 @@ permission:
 </task>
 
 <critical_rules priority="absolute">
-<rule id="backend_only">Ne jamais modifier de fichiers hors de backend/ — ml/, frontend/ sont interdits</rule>
+<rule id="scope">Tu peux modifier `backend/**` et les documents de cadrage autorisés sous `gestion-de-projet/architecture/**` et `gestion-de-projet/security/**`. Tout autre périmètre est interdit.</rule>
 <rule id="service_layer">La logique métier va dans services/ — jamais dans les routers</rule>
 <rule id="repository_pattern">Les accès PostgreSQL vont dans db/ — jamais de SQL dans les routers ou services</rule>
 <rule id="pydantic_schemas">Tout endpoint utilise des schemas Pydantic stricts — pas de dict retournés directement</rule>

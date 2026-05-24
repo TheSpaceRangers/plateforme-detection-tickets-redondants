@@ -10,9 +10,12 @@ permission:
   list: allow
   edit:
     "*": deny
-    "tests/**": allow
     "**/*.env*": deny
     "**/*.key": deny
+    "tests/**": allow
+    "gestion-de-projet/architecture/**": allow
+    "gestion-de-projet/security/**": allow
+    "gestion-de-projet/checklists/**": allow
   task: deny
   bash:
     "*": deny
