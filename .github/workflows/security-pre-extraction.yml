@@ -34,7 +34,7 @@ jobs:
 
           forbidden_regex='(^|/)\.env(\..*)?$|(^|/)[^/]*\.env(\..*)?$|(^|/).*\.(dump|sql|sqlite|sqlite3|db|log|csv|tsv|parquet|pkl|pickle|joblib|onnx|pt|pth|h5|hdf5|npy|npz)$|(^|/)(dump|dumps|dataset|datasets|data|logs|artifacts|artefacts|models?)(/|$)|(^|/)\.DS_Store$'
 
-          if git ls-files -z | grep -zE "$forbidden_regex" > /tmp/forbidden-files; then
+          if git ls-files -z | grep -zE "$forbidden_regex" | grep -zEv '(^|/)\.env\.example$' > /tmp/forbidden-files; then
             echo "Forbidden tracked files detected. Remove them from Git before extraction."
             tr '\0' '\n' < /tmp/forbidden-files
             exit 1
