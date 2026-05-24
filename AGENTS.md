@@ -24,11 +24,11 @@ Projet développé avec opencode et une équipe d'agents spécialisés.
 Utilisateur (escalade critique uniquement)
     │
     └── project-manager ← vision, roadmap, qualité globale
+        ├── devops-engineer
+        │   └── CI/CD, GitHub Projects, infrastructure
         │
         └── scrum-master ← exécution agile, sprints, coordination
             │
-            ├── devops-engineer
-            │   └── CI/CD, GitHub Projects, infrastructure
             │
             ├── tech-lead
             │   ├── backend-engineer
@@ -83,13 +83,13 @@ Utilisateur (escalade critique uniquement)
 
 ## Règles de délégation
 
-| De                | Peut contacter                                                        |
-| ----------------- | --------------------------------------------------------------------- |
-| `project-manager` | `scrum-master` uniquement                                             |
-| `scrum-master`    | `tech-lead`, `compliance-lead`, `devops-engineer`                     |
-| `tech-lead`       | `backend-engineer`, `frontend-engineer`, `ml-engineer`, `qa-engineer` |
-| `compliance-lead` | `cybersecurity-engineer`, `rgpd-engineer`                             |
-| Tous les autres   | Personne — remontent à leur supérieur                                 |
+| De                | Peut contacter                                                                   |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `project-manager` | `scrum-master` et `devops-engineer` uniquement                                   |
+| `scrum-master`    | `tech-lead`, `compliance-lead` uniquement                                        |
+| `tech-lead`       | `backend-engineer`, `frontend-engineer`, `ml-engineer`, `qa-engineer` uniquement |
+| `compliance-lead` | `cybersecurity-engineer`, `rgpd-engineer` uniquement                             |
+| Tous les autres   | Personne — remontent à leur supérieur                                            |
 
 ## Distinction cybersecurity / rgpd
 

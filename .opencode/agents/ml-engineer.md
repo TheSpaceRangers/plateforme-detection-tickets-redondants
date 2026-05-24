@@ -10,9 +10,11 @@ permission:
   list: allow
   edit:
     "*": deny
-    "ml/**": allow
     "**/*.env*": deny
     "**/*.key": deny
+    "ml/**": allow
+    "gestion-de-projet/checklists/**": allow
+    "gestion-de-projet/architecture/**": allow
   task: deny
   bash:
     "*": deny
@@ -42,7 +44,7 @@ permission:
 </task>
 
 <critical_rules priority="absolute">
-<rule id="ml_only">Ne jamais modifier de fichiers hors de ml/ — backend/, frontend/ sont interdits</rule>
+<rule id="scope">Tu peux modifier `ml/**` et les documents de cadrage autorisés sous `gestion-de-projet/checklists/**`. Tout autre périmètre est interdit.</rule>
 <rule id="explore_all">Explorer tous les algorithmes pertinents — ML classique ET deep learning — ne jamais se limiter a priori</rule>
 <rule id="random_state">random_state=42 partout — reproductibilité obligatoire</rule>
 <rule id="no_columns">Ne pas supposer les colonnes à utiliser — les déduire de l'exploration des données</rule>

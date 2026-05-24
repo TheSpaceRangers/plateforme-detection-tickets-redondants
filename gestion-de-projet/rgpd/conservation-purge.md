@@ -8,16 +8,16 @@
 
 ## 1. Durées de conservation
 
-| Catégorie de données | Durée de conservation | Point de départ | Justification |
-|---|---|---|---|
-| **Tickets pseudonymisés en PostgreSQL** | **J+7 post-soutenance maximum** | Date de soutenance | Usage limité à l'évaluation académique et purge rapide après démonstration |
-| **Logs de prédiction** (scores, ids pseudonymes, timestamp) | **J+7 post-soutenance maximum** | Date de soutenance | Traçabilité sans texte brut, secret, email, nom, téléphone ni détail de ticket |
-| **Données brutes HaloPSA** (avant transformation) | **Non persistées** ; 24h maximum uniquement en incident documenté | Date d'extraction | Transformation immédiate ; purge obligatoire de tout résidu temporaire |
-| **Modèle ML sérialisé** (joblib) | **J+7 post-soutenance maximum si entraîné sur données réelles** | Date de soutenance | Artefact dérivé des tickets, donc inclus dans la purge |
-| **Jeux de données ML** (train/test/val) | **J+7 post-soutenance maximum** | Date de soutenance | Datasets pseudonymisés mais non anonymes |
-| **Backups, dumps, volumes Docker, exports, caches** | **J+7 post-soutenance maximum** | Date de soutenance | Toute copie ou dérivé des données est inclus dans la purge |
-| **Mémoire PDF et annexes** | **Permanent** (anonymisé) | Dépôt mémoire | Engagement académique — vérifier absence totale de PII avant dépôt |
-| **Journal des purges** | **2 ans post-soutenance** | Date de purge | Preuve de conformité pour tout audit ultérieur (Art. 5.2 — Responsabilité) |
+| Catégorie de données                                        | Durée de conservation                                             | Point de départ    | Justification                                                                  |
+| ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------ |
+| **Tickets pseudonymisés en PostgreSQL**                     | **J+7 post-soutenance maximum**                                   | Date de soutenance | Usage limité à l'évaluation académique et purge rapide après démonstration     |
+| **Logs de prédiction** (scores, ids pseudonymes, timestamp) | **J+7 post-soutenance maximum**                                   | Date de soutenance | Traçabilité sans texte brut, secret, email, nom, téléphone ni détail de ticket |
+| **Données brutes HaloPSA** (avant transformation)           | **Non persistées** ; 24h maximum uniquement en incident documenté | Date d'extraction  | Transformation immédiate ; purge obligatoire de tout résidu temporaire         |
+| **Modèle ML sérialisé** (joblib)                            | **J+7 post-soutenance maximum si entraîné sur données réelles**   | Date de soutenance | Artefact dérivé des tickets, donc inclus dans la purge                         |
+| **Jeux de données ML** (train/test/val)                     | **J+7 post-soutenance maximum**                                   | Date de soutenance | Datasets pseudonymisés mais non anonymes                                       |
+| **Backups, dumps, volumes Docker, exports, caches**         | **J+7 post-soutenance maximum**                                   | Date de soutenance | Toute copie ou dérivé des données est inclus dans la purge                     |
+| **Mémoire PDF et annexes**                                  | **Permanent** (anonymisé)                                         | Dépôt mémoire      | Engagement académique — vérifier absence totale de PII avant dépôt             |
+| **Journal des purges**                                      | **2 ans post-soutenance**                                         | Date de purge      | Preuve de conformité pour tout audit ultérieur (Art. 5.2 — Responsabilité)     |
 
 ---
 
@@ -25,12 +25,12 @@
 
 ### 2.1 Calendrier
 
-| Étape | Date butoir | Action |
-|---|---|---|
-| Jalon mémoire | 2026-09-01 | Vérification qu'aucune PII n'est dans le mémoire ou les annexes |
-| Soutenance | Octobre 2026 | Dernière utilisation des données de production |
-| J+7 post-soutenance | Octobre 2026 | Exécution de la purge complète |
-| J+30 post-soutenance | Novembre 2026 | Attestation de purge signée |
+| Étape                | Date butoir   | Action                                                          |
+| -------------------- | ------------- | --------------------------------------------------------------- |
+| Jalon mémoire        | 2026-09-01    | Vérification qu'aucune PII n'est dans le mémoire ou les annexes |
+| Soutenance           | Octobre 2026  | Dernière utilisation des données de production                  |
+| J+7 post-soutenance  | Octobre 2026  | Exécution de la purge complète                                  |
+| J+30 post-soutenance | Novembre 2026 | Attestation de purge signée                                     |
 
 ### 2.2 Périmètre de la purge
 
@@ -67,6 +67,7 @@ Le mémoire devra contenir un engagement écrit similaire à :
 > Conformément à l'article 5.1.e du RGPD, l'ensemble des données extraites de l'API HaloPSA dans le cadre du projet SYNAPPSE sont conservées au maximum jusqu'à J+7 post-soutenance.
 >
 > Une purge complète est exécutée dans les 7 jours suivant la soutenance :
+>
 > - Suppression de la base PostgreSQL contenant les tickets pseudonymisés
 > - Suppression des artefacts modèles et jeux de données
 > - Suppression de tous les logs contenant des données de production
@@ -79,12 +80,12 @@ Le mémoire devra contenir un engagement écrit similaire à :
 
 ## 4. Surveillance et application
 
-| Mécanisme | Responsable | Fréquence |
-|---|---|---|
-| Vérification des durées de conservation | Compliance Lead | Mensuelle |
-| Alerte de purge post-soutenance | Scrum Master | Jalon dédié dans le backlog |
-| Mise à jour du registre de traitement | Compliance Lead | Après chaque modification de durée |
-| Vérification d'absence de données brutes dans Git | DevOps Engineer | À chaque PR |
+| Mécanisme                                         | Responsable     | Fréquence                          |
+| ------------------------------------------------- | --------------- | ---------------------------------- |
+| Vérification des durées de conservation           | Compliance Lead | Mensuelle                          |
+| Alerte de purge post-soutenance                   | Scrum Master    | Jalon dédié dans le backlog        |
+| Mise à jour du registre de traitement             | Compliance Lead | Après chaque modification de durée |
+| Vérification d'absence de données brutes dans Git | DevOps Engineer | À chaque PR                        |
 
 ---
 

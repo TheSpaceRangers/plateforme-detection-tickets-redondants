@@ -6,15 +6,15 @@ Valider les conditions préalables à une extraction HaloPSA destinée à consti
 
 ## Décision Go/No-Go
 
-| Critère | Statut |
-| --- | --- |
+| Critère                                              | Statut             |
+| ---------------------------------------------------- | ------------------ |
 | Stratégie d'extraction définie sans exécution réelle | [ ] GO / [ ] NO-GO |
-| Allowlist stricte validée avant extraction | [ ] GO / [ ] NO-GO |
-| Règles PII validées avant stockage | [ ] GO / [ ] NO-GO |
-| Règles de logs validées | [ ] GO / [ ] NO-GO |
-| Critères dataset ML validés | [ ] GO / [ ] NO-GO |
-| Critères qualité données et labels validés | [ ] GO / [ ] NO-GO |
-| Politique de conservation/purge validée | [ ] GO / [ ] NO-GO |
+| Allowlist stricte validée avant extraction           | [ ] GO / [ ] NO-GO |
+| Règles PII validées avant stockage                   | [ ] GO / [ ] NO-GO |
+| Règles de logs validées                              | [ ] GO / [ ] NO-GO |
+| Critères dataset ML validés                          | [ ] GO / [ ] NO-GO |
+| Critères qualité données et labels validés           | [ ] GO / [ ] NO-GO |
+| Politique de conservation/purge validée              | [ ] GO / [ ] NO-GO |
 
 **Décision globale :** [ ] GO extraction contrôlée / [ ] NO-GO
 
