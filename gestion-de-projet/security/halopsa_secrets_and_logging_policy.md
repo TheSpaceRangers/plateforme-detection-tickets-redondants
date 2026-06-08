@@ -22,7 +22,7 @@ Exemples de noms autorisés sans valeur :
 - `HALOPSA_CLIENT_ID`
 - `HALOPSA_CLIENT_SECRET`
 - `HALOPSA_TENANT`
-- `HALOPSA_HMAC_KEY`
+- `SYNAPPSE_AGENT_ID_HMAC_SECRET`
 
 Pourquoi : nommer les variables clarifie le contrat d'exploitation sans exposer de secret.
 
@@ -58,6 +58,8 @@ Toute conservation de pseudonyme dérivé d'un identifiant personnel, notamment 
 Règles :
 
 - utiliser HMAC-SHA-256 avec une clé stockée hors base et hors dépôt ;
+- injecter le secret HMAC via `SYNAPPSE_AGENT_ID_HMAC_SECRET`, sans valeur documentée ;
+- échouer en mode fermé si `SYNAPPSE_AGENT_ID_HMAC_SECRET` est absent ou vide lorsqu'une pseudonymisation est requise ;
 - gérer une version de clé ;
 - ne jamais stocker l'identifiant brut ;
 - ne jamais logger la valeur brute, la clé ou les entrées de calcul ;
