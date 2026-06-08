@@ -16,8 +16,9 @@ backend/app/
 ## Décisions de cadrage
 
 - FastAPI reste la cible backend, mais aucun serveur applicatif n'est démarré à ce stade.
-- PostgreSQL est la base cible; le schéma est défini dans `backend/app/db/schema.sql` sans données d'exemple.
+- PostgreSQL est la base cible et peut être vérifié localement; aucun schéma backend applicatif n'est encore présent dans `backend/app/db/schema.sql`.
 - L'ingestion HaloPSA est cadrée en lecture seule dans `backend/docs/halopsa_ingestion_read_only.md`.
+- Les contrôles pré-stockage tickets sont cadrés dans `backend/docs/pre_storage_privacy_controls.md` tant qu'aucun point d'intégration backend n'existe.
 - Les futurs scripts Python devront utiliser Python 3.11+, `uv`, des type hints et des variables d'environnement.
 
 ## Données interdites dans Git
