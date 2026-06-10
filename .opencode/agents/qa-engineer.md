@@ -22,9 +22,11 @@ permission:
     find *: allow
     ls *: allow
     cat *: allow
-    "python -m pytest *": allow
-    "pytest *": allow
-    "ruff check *": allow
+    "python3 -m venv .venv": allow
+    ".venv/bin/pip install -r tests/requirements.txt": allow
+    ".venv/bin/pytest tests/unit/backend/* -v": allow
+    ".venv/bin/pytest tests/unit/ml/* -v": allow
+    ".venv/bin/pytest tests/unit/backend/* tests/unit/ml/* -v": allow
 ---
 
 # QA Engineer

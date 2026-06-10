@@ -22,8 +22,8 @@ permission:
     ls *: allow
     cat *: allow
     "python3 --version": allow
-    "python *": allow
-    "pip install *": allow
+    ".venv/bin/python *": allow
+    ".venv/bin/pip install *": allow
 ---
 
 # Backend Engineer

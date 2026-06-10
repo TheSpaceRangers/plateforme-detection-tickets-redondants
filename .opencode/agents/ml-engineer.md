@@ -21,8 +21,9 @@ permission:
     find *: allow
     ls *: allow
     cat *: allow
-    "python *": allow
-    "pip install *": allow
+    "python3 --version": allow
+    ".venv/bin/python *": allow
+    ".venv/bin/pip install *": allow
 ---
 
 # ML Engineer

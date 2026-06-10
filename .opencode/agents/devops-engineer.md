@@ -26,6 +26,9 @@ permission:
     pip *: allow
     git *: allow
     "GH_TOKEN=* gh *": allow
+    "docker info *": allow
+    "docker compose *": allow
+    ".venv/bin/python *": allow
 ---
 
 # DevOps Engineer
