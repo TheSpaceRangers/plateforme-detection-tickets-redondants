@@ -2,9 +2,10 @@
 
 ## État actuel observé
 
-- Aucun flux backend d'extraction HaloPSA n'existe à ce stade.
+- Un contrat d'extraction source-agnostique existe côté `backend/app/data/extractors/ticket_extractor.py`.
+- Un adaptateur HaloPSA préparatoire existe, mais son transport par défaut bloque toute exécution réseau.
 - Aucun endpoint, service, repository ou script backend ne déclenche d'appel HaloPSA.
-- Aucun stockage applicatif de ticket, dataset ou payload HaloPSA n'est implémenté côté backend.
+- Aucun stockage applicatif de payload brut HaloPSA n'est implémenté côté backend.
 - Le secret runtime attendu pour une pseudonymisation HMAC d'`agent_id` est `SYNAPPSE_AGENT_ID_HMAC_SECRET`; il n'est pas requis tant qu'aucune pseudonymisation opérationnelle n'est exécutée.
 
 ## Décision Sprint 1
@@ -33,6 +34,16 @@ Le futur flux backend devra respecter strictement l'ordre suivant :
 4. **Repository Pattern** : persister uniquement des champs nettoyés et/ou pseudonymisés dans PostgreSQL.
 
 La logique métier restera dans `backend/app/services/` et l'accès PostgreSQL dans `backend/app/db/repositories/`.
+
+## Préparation technique implémentée
+
+- `TicketExtractor` définit le protocole découplé attendu par `TicketIngestionService`.
+- `HaloPsaExtractorConfig` est injecté par l'appelant et valide en fail-closed `base_url`, `client_id`, `client_secret`, `tenant` et `page_size`, sans charger de `.env`.
+- `HaloPsaTicketClient` ne connaît qu'un `HaloPsaTransport` injecté ; sans transport explicite, `NoopHaloPsaTransport` lève une erreur et ne fait aucun réseau.
+- `HaloPsaTicketExtractor` transforme uniquement les champs allowlistés vers `IncomingTicket` : `external_ticket_id`, `summary`, `details`, `status`, `priority`, `category`, `agent_id`.
+- Les champs bruts hors allowlist ne sont pas transmis au service d'ingestion ni aux repositories.
+
+Intégration future prévue : instancier `TicketIngestionService(extractor=HaloPsaTicketExtractor(client), repository=...)` puis appeler `ingest_tickets()`. Le transport réel devra être fourni par composition et validé séparément par sécurité/conformité.
 
 ## Allowlist pré-stockage
 

@@ -1,4 +1,4 @@
-"""Typed ticket structures for synthetic ingestion and clean storage."""
+"""Typed ticket structures for ingestion and clean storage."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
-class IncomingSyntheticTicket:
-    """Allowlisted incoming synthetic ticket fields before privacy guardrails."""
+class IncomingTicket:
+    """Allowlisted incoming ticket fields before privacy guardrails."""
 
     external_ticket_id: str
     summary: str
@@ -31,6 +31,9 @@ class IncomingSyntheticTicket:
         if self.agent_id is not None:
             mapping["agent_id"] = self.agent_id
         return mapping
+
+
+IncomingSyntheticTicket = IncomingTicket
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Protocol
+from collections.abc import Iterable
 
+from backend.app.data.extractors.ticket_extractor import TicketExtractor
 from backend.app.schemas.tickets import IncomingSyntheticTicket
-
-
-class TicketExtractor(Protocol):
-    """Boundary abstraction for ticket extraction sources."""
-
-    def extract(self) -> Iterable[IncomingSyntheticTicket]:
-        """Return ticket-like records without persisting raw source payloads."""
 
 
 class SyntheticTicketExtractor:

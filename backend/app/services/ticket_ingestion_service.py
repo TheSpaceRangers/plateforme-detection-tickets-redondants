@@ -1,10 +1,10 @@
-"""Service orchestrating synthetic extraction, privacy guardrails, and storage."""
+"""Service orchestrating ticket extraction, privacy guardrails, and storage."""
 
 from __future__ import annotations
 
 from ml.src.preprocessing import AgentIdPolicy, assert_no_residual_pii, build_preprocessed_ticket_dataset
 
-from backend.app.data.extractors.synthetic_ticket_extractor import TicketExtractor
+from backend.app.data.extractors.ticket_extractor import TicketExtractor
 from backend.app.db.repositories.ticket_repository import TicketRepository
 from backend.app.schemas.tickets import IngestionResult, StoredCleanTicket
 
@@ -18,6 +18,11 @@ class TicketIngestionService:
 
     def ingest_synthetic_tickets(self, include_agent_pseudonym: bool = False) -> IngestionResult:
         """Run extraction, ML privacy guardrails, and sanitized storage in that order."""
+
+        return self.ingest_tickets(include_agent_pseudonym=include_agent_pseudonym)
+
+    def ingest_tickets(self, include_agent_pseudonym: bool = False) -> IngestionResult:
+        """Run source-agnostic extraction, ML privacy guardrails, and sanitized storage."""
 
         incoming_tickets = tuple(self._extractor.extract())
         guarded_records = build_preprocessed_ticket_dataset(
