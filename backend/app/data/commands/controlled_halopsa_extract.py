@@ -15,7 +15,10 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
+
+from dotenv import load_dotenv
 
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient, HaloPsaTransport
 from backend.app.data.extractors.halopsa_config import (
@@ -37,6 +40,15 @@ REQUIRED_ENV_KEYS: tuple[str, ...] = (
     "HALOPSA_TENANT",
     "HALO_SCOPE",
 )
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_LOCAL_DOTENV_PATH = PROJECT_ROOT / "ml" / ".env"
+
+
+class DotenvLoader(Protocol):
+    """Mockable dotenv loader contract for local controlled execution."""
+
+    def __call__(self, dotenv_path: str | os.PathLike[str], *, override: bool = False) -> bool:
+        """Load a dotenv file without overriding explicitly exported variables."""
 
 
 class ControlledExtractionError(RuntimeError):
@@ -125,11 +137,26 @@ def run_controlled_halopsa_extract(
     )
 
 
-def main() -> int:
+def load_local_dotenv(
+    *,
+    dotenv_path: str | os.PathLike[str] = DEFAULT_LOCAL_DOTENV_PATH,
+    dotenv_loader: DotenvLoader = load_dotenv,
+) -> bool:
+    """Load the explicit local dotenv file without exposing or overriding values."""
+
+    return dotenv_loader(dotenv_path, override=False)
+
+
+def main(
+    *,
+    dotenv_path: str | os.PathLike[str] = DEFAULT_LOCAL_DOTENV_PATH,
+    dotenv_loader: DotenvLoader = load_dotenv,
+) -> int:
     """Validate configuration and fail closed without implicit network or storage."""
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     logger = logging.getLogger(__name__)
+    load_local_dotenv(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
     try:
         run_controlled_halopsa_extract(env=os.environ, logger=logger)
     except ControlledExtractionError as exc:
