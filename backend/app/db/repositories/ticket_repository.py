@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable, Protocol, Sequence
 
 from backend.app.schemas.tickets import StoredCleanTicket
@@ -42,8 +43,10 @@ class InMemoryTicketRepository:
 class PostgresTicketRepository:
     """PostgreSQL repository persisting allowlisted sanitized ticket columns only."""
 
-    def __init__(self, connection_factory: Callable[[], Any]) -> None:
+    def __init__(self, connection_factory: Callable[[], Any], *, initialize_schema: bool = False) -> None:
         self._connection_factory = connection_factory
+        self._initialize_schema = initialize_schema
+        self._schema_initialized = False
 
     def save_many(self, tickets: Sequence[StoredCleanTicket]) -> int:
         """Persist sanitized tickets without accepting raw JSON payloads."""
@@ -80,8 +83,24 @@ class PostgresTicketRepository:
         connection = self._connection_factory()
         with connection:
             with connection.cursor() as cursor:
+                self._ensure_schema(cursor)
                 cursor.executemany(insert_statement, values)
         return len(tickets)
+
+    def _ensure_schema(self, cursor: Any) -> None:
+        """Create the allowlisted clean ticket table when explicitly requested."""
+
+        if not self._initialize_schema or self._schema_initialized:
+            return
+        cursor.execute(_schema_sql())
+        self._schema_initialized = True
+
+
+def _schema_sql() -> str:
+    """Load the clean-ticket-only PostgreSQL schema bundled with backend."""
+
+    schema_path = Path(__file__).resolve().parents[1] / "schema.sql"
+    return schema_path.read_text(encoding="utf-8")
 
 
 def _assert_clean_ticket_sequence(tickets: Sequence[StoredCleanTicket]) -> None:
