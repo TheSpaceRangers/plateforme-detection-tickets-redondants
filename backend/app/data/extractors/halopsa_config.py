@@ -6,6 +6,10 @@ from dataclasses import dataclass
 
 SAFE_DEFAULT_PAGE_SIZE = 1
 MAX_PAGE_SIZE = 5
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_TOKEN_PATH = "/auth/token"
+DEFAULT_TICKETS_PATH = "/api/Tickets"
 
 
 class InvalidHaloPsaConfigurationError(ValueError):
@@ -22,6 +26,15 @@ class HaloPsaExtractorConfig:
     tenant: str
     scope: str = ""
     page_size: int = SAFE_DEFAULT_PAGE_SIZE
+    request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    max_retries: int = DEFAULT_MAX_RETRIES
+    token_path: str = DEFAULT_TOKEN_PATH
+    tickets_path: str = DEFAULT_TICKETS_PATH
+
+    def __post_init__(self) -> None:
+        """Normalize bounded operational settings without exposing sensitive values."""
+
+        object.__setattr__(self, "page_size", min(self.page_size, MAX_PAGE_SIZE))
 
     def validate(self) -> None:
         """Fail closed when a required setting is absent before any usage."""
@@ -42,11 +55,17 @@ class HaloPsaExtractorConfig:
             )
         if self.page_size <= 0:
             raise InvalidHaloPsaConfigurationError("HaloPSA page_size must be strictly positive")
-        if self.page_size > MAX_PAGE_SIZE:
-            raise InvalidHaloPsaConfigurationError(f"HaloPSA page_size must not exceed {MAX_PAGE_SIZE}")
+        if self.request_timeout_seconds <= 0:
+            raise InvalidHaloPsaConfigurationError("HaloPSA request timeout must be strictly positive")
+        if self.max_retries < 0:
+            raise InvalidHaloPsaConfigurationError("HaloPSA max_retries must be zero or positive")
+        if not self.token_path.strip():
+            raise InvalidHaloPsaConfigurationError("HaloPSA token_path must be configured")
+        if not self.tickets_path.strip():
+            raise InvalidHaloPsaConfigurationError("HaloPSA tickets_path must be configured")
 
     def redacted_summary(self) -> str:
         """Return a non-sensitive summary suitable for technical diagnostics."""
 
         self.validate()
-        return f"HaloPsaExtractorConfig(page_size={self.page_size})"
+        return f"HaloPsaExtractorConfig(page_size={self.page_size}, max_retries={self.max_retries})"

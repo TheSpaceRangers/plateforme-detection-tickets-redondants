@@ -133,7 +133,6 @@ def test_build_config_from_env_uses_safe_default_page_size_when_absent() -> None
 @pytest.mark.parametrize(
     ("raw_page_size", "expected_message"),
     [
-        ("6", "must not exceed 5"),
         ("0", "strictly positive"),
         ("-1", "strictly positive"),
         ("not-an-integer", "must be an integer"),
@@ -153,6 +152,88 @@ def test_build_config_from_env_fails_closed_for_unsafe_page_size(
 
     # Assert
     assert env["HALO_PAGE_SIZE"] == raw_page_size
+
+
+def test_build_config_from_env_caps_page_size_above_safe_limit_to_five() -> None:
+    # Arrange
+    command = _command_module()
+    env = _valid_env(HALO_PAGE_SIZE="25")
+
+    # Act
+    config = command.build_config_from_env(env)
+
+    # Assert
+    assert config.page_size == 5
+    assert env["HALO_PAGE_SIZE"] == "25"
+
+
+def test_run_controlled_halopsa_extract_blocks_when_transport_is_absent() -> None:
+    # Arrange
+    command = _command_module()
+    env = _valid_env()
+
+    # Act
+    with pytest.raises(
+        command.ControlledExtractionError,
+        match="HaloPSA network transport is not explicitly configured",
+    ):
+        command.run_controlled_halopsa_extract(env=env)
+
+    # Assert
+    assert command._is_network_enabled(env) is False
+
+
+@pytest.mark.parametrize("enabled_value", ["true", "TRUE", "1", "yes", "on"])
+def test_explicit_network_transport_is_built_only_for_authorized_enable_values(
+    monkeypatch: pytest.MonkeyPatch,
+    enabled_value: str,
+) -> None:
+    # Arrange
+    command = _command_module()
+    transport_factory = MagicMock(return_value="synthetic-transport")
+    monkeypatch.setattr(command, "HaloPsaHttpTransport", transport_factory)
+    env = _valid_env(HALOPSA_ENABLE_NETWORK=enabled_value)
+
+    # Act
+    transport = command._build_explicit_network_transport(env)
+
+    # Assert
+    assert transport == "synthetic-transport"
+    transport_factory.assert_called_once_with()
+
+
+@pytest.mark.parametrize("disabled_value", [None, "", "false", "0", "no", "unexpected"])
+def test_explicit_network_transport_is_not_built_without_authorized_enable_value(
+    monkeypatch: pytest.MonkeyPatch,
+    disabled_value: str | None,
+) -> None:
+    # Arrange
+    command = _command_module()
+    transport_factory = MagicMock(side_effect=AssertionError("real transport must not be built"))
+    monkeypatch.setattr(command, "HaloPsaHttpTransport", transport_factory)
+    env = _valid_env(HALOPSA_ENABLE_NETWORK=disabled_value)
+
+    # Act
+    transport = command._build_explicit_network_transport(env)
+
+    # Assert
+    assert transport is None
+    transport_factory.assert_not_called()
+
+
+def test_injected_real_transport_is_rejected_when_network_is_not_enabled() -> None:
+    # Arrange
+    command = _command_module()
+    transport = command.HaloPsaHttpTransport()
+    ingestion_service = MagicMock()
+    env = _valid_env(HALOPSA_ENABLE_NETWORK="false")
+
+    # Act
+    with pytest.raises(command.ControlledExtractionError, match="not explicitly enabled"):
+        command.run_controlled_halopsa_extract(env=env, transport=transport, ingestion_service=ingestion_service)
+
+    # Assert
+    ingestion_service.ingest_tickets.assert_not_called()
 
 
 def test_main_with_valid_env_blocks_without_implicit_transport_or_repository(

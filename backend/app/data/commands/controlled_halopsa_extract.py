@@ -6,6 +6,7 @@ runtime configuration and then stops unless an explicit network transport and a
 repository-backed ingestion service are injected by integration code.
 
 HALO_PAGE_SIZE defaults to 1 when absent and is capped at 5.
+HALOPSA_ENABLE_NETWORK=true is required before the real HTTP transport is built.
 """
 
 from __future__ import annotations
@@ -22,11 +23,16 @@ from dotenv import load_dotenv
 
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient, HaloPsaTransport
 from backend.app.data.extractors.halopsa_config import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    DEFAULT_TICKETS_PATH,
+    DEFAULT_TOKEN_PATH,
     MAX_PAGE_SIZE,
     SAFE_DEFAULT_PAGE_SIZE,
     HaloPsaExtractorConfig,
     InvalidHaloPsaConfigurationError,
 )
+from backend.app.data.extractors.halopsa_http_transport import HaloPsaHttpTransport
 from backend.app.data.extractors.halopsa_ticket_extractor import HaloPsaTicketExtractor
 from backend.app.db.repositories.ticket_repository import TicketRepository
 from backend.app.schemas.tickets import IngestionResult
@@ -40,6 +46,8 @@ REQUIRED_ENV_KEYS: tuple[str, ...] = (
     "HALOPSA_TENANT",
     "HALO_SCOPE",
 )
+NETWORK_ENABLE_KEY = "HALOPSA_ENABLE_NETWORK"
+TRUE_ENV_VALUES = frozenset(("1", "true", "yes", "on"))
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_LOCAL_DOTENV_PATH = PROJECT_ROOT / "ml" / ".env"
 
@@ -96,6 +104,18 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
         tenant=env["HALOPSA_TENANT"].strip(),
         scope=env["HALO_SCOPE"].strip(),
         page_size=page_size,
+        request_timeout_seconds=_parse_positive_float(
+            env.get("HALOPSA_REQUEST_TIMEOUT_SECONDS"),
+            default_value=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            field_name="HALOPSA_REQUEST_TIMEOUT_SECONDS",
+        ),
+        max_retries=_parse_non_negative_int(
+            env.get("HALOPSA_MAX_RETRIES"),
+            default_value=DEFAULT_MAX_RETRIES,
+            field_name="HALOPSA_MAX_RETRIES",
+        ),
+        token_path=env.get("HALOPSA_TOKEN_PATH", DEFAULT_TOKEN_PATH).strip() or DEFAULT_TOKEN_PATH,
+        tickets_path=env.get("HALOPSA_TICKETS_PATH", DEFAULT_TICKETS_PATH).strip() or DEFAULT_TICKETS_PATH,
     )
     try:
         config.validate()
@@ -121,7 +141,10 @@ def run_controlled_halopsa_extract(
 
     safe_logger = logger or logging.getLogger(__name__)
     config = build_config_from_env(env)
-    service = ingestion_service or _build_ingestion_service(config, transport, repository)
+    if isinstance(transport, HaloPsaHttpTransport) and not _is_network_enabled(env):
+        raise ControlledExtractionError("HaloPSA network transport is not explicitly enabled")
+    selected_transport = transport or _build_explicit_network_transport(env)
+    service = ingestion_service or _build_ingestion_service(config, selected_transport, repository)
 
     safe_logger.info("Controlled HaloPSA extraction started")
     result = service.ingest_tickets(include_agent_pseudonym=True)
@@ -182,8 +205,22 @@ def _build_ingestion_service(
     return TicketIngestionService(extractor=extractor, repository=repository)
 
 
+def _build_explicit_network_transport(env: Mapping[str, str]) -> HaloPsaTransport | None:
+    """Create the real transport only when the network enable flag is explicitly true."""
+
+    if _is_network_enabled(env):
+        return HaloPsaHttpTransport()
+    return None
+
+
+def _is_network_enabled(env: Mapping[str, str]) -> bool:
+    """Return whether the runtime explicitly opted in to HaloPSA network calls."""
+
+    return env.get(NETWORK_ENABLE_KEY, "").strip().lower() in TRUE_ENV_VALUES
+
+
 def _parse_page_size(raw_page_size: str | None) -> int:
-    """Parse HALO_PAGE_SIZE with a safe default and strict upper bound."""
+    """Parse HALO_PAGE_SIZE with a safe default and cap values above the maximum."""
 
     if raw_page_size is None or not raw_page_size.strip():
         return SAFE_DEFAULT_PAGE_SIZE
@@ -193,9 +230,35 @@ def _parse_page_size(raw_page_size: str | None) -> int:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be an integer") from exc
     if page_size <= 0:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be strictly positive")
-    if page_size > MAX_PAGE_SIZE:
-        raise ControlledExtractionError(f"HALO_PAGE_SIZE must not exceed {MAX_PAGE_SIZE}")
-    return page_size
+    return min(page_size, MAX_PAGE_SIZE)
+
+
+def _parse_positive_float(raw_value: str | None, *, default_value: float, field_name: str) -> float:
+    """Parse a strictly positive float runtime setting without exposing its raw value."""
+
+    if raw_value is None or not raw_value.strip():
+        return default_value
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ControlledExtractionError(f"{field_name} must be a number") from exc
+    if value <= 0:
+        raise ControlledExtractionError(f"{field_name} must be strictly positive")
+    return value
+
+
+def _parse_non_negative_int(raw_value: str | None, *, default_value: int, field_name: str) -> int:
+    """Parse a non-negative integer runtime setting without exposing its raw value."""
+
+    if raw_value is None or not raw_value.strip():
+        return default_value
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ControlledExtractionError(f"{field_name} must be an integer") from exc
+    if value < 0:
+        raise ControlledExtractionError(f"{field_name} must be zero or positive")
+    return value
 
 
 if __name__ == "__main__":
