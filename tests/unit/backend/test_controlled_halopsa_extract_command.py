@@ -44,6 +44,8 @@ def test_controlled_halopsa_extract_import_is_safe_without_dotenv_network_or_sto
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
+    dotenv_module = importlib.import_module("dotenv")
+    dotenv_loader = MagicMock(side_effect=AssertionError("controlled command import must not load dotenv"))
     original_open = builtins.open
     opened_paths: list[str] = []
 
@@ -54,6 +56,7 @@ def test_controlled_halopsa_extract_import_is_safe_without_dotenv_network_or_sto
             raise AssertionError("controlled command import must not read .env")
         return original_open(file, *args, **kwargs)
 
+    monkeypatch.setattr(dotenv_module, "load_dotenv", dotenv_loader)
     monkeypatch.setattr(builtins, "open", guarded_open)
     sys.modules.pop(MODULE_NAME, None)
 
@@ -69,7 +72,22 @@ def test_controlled_halopsa_extract_import_is_safe_without_dotenv_network_or_sto
         "HALOPSA_TENANT",
         "HALO_SCOPE",
     )
+    dotenv_loader.assert_not_called()
     assert not any(Path(path).name == ".env" for path in opened_paths)
+
+
+def test_load_local_dotenv_calls_injected_loader_with_provided_path_and_no_override(tmp_path: Path) -> None:
+    # Arrange
+    command = _command_module()
+    dotenv_path = tmp_path / ".env"
+    dotenv_loader = MagicMock(return_value=True)
+
+    # Act
+    loaded = command.load_local_dotenv(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
+
+    # Assert
+    assert loaded is True
+    dotenv_loader.assert_called_once_with(dotenv_path, override=False)
 
 
 @pytest.mark.parametrize(
@@ -139,9 +157,12 @@ def test_build_config_from_env_fails_closed_for_unsafe_page_size(
 
 def test_main_with_valid_env_blocks_without_implicit_transport_or_repository(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     # Arrange
     command = _command_module()
+    dotenv_loader = MagicMock(return_value=True)
+    dotenv_path = tmp_path / ".env"
     for key in command.REQUIRED_ENV_KEYS + ("HALO_PAGE_SIZE",):
         monkeypatch.delenv(key, raising=False)
     for key, value in _valid_env().items():
@@ -153,11 +174,83 @@ def test_main_with_valid_env_blocks_without_implicit_transport_or_repository(
     )
 
     # Act
-    exit_code = command.main()
+    exit_code = command.main(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
 
     # Assert
     assert exit_code == 2
+    dotenv_loader.assert_called_once_with(dotenv_path, override=False)
     command.HaloPsaTicketClient.assert_not_called()
+
+
+def test_main_calls_injected_dotenv_loader_before_mocked_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Arrange
+    command = _command_module()
+    dotenv_path = tmp_path / ".env"
+    call_order: list[str] = []
+
+    def dotenv_loader(path: str | Path, *, override: bool = False) -> bool:
+        call_order.append("dotenv")
+        assert path == dotenv_path
+        assert override is False
+        return True
+
+    def run_controlled_halopsa_extract(**kwargs: object) -> command.ControlledExtractionResult:
+        call_order.append("extract")
+        assert kwargs["env"] is command.os.environ
+        return command.ControlledExtractionResult(extracted_count=0, stored_count=0, status="mocked")
+
+    monkeypatch.setattr(command, "run_controlled_halopsa_extract", run_controlled_halopsa_extract)
+
+    # Act
+    exit_code = command.main(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
+
+    # Assert
+    assert exit_code == 0
+    assert call_order == ["dotenv", "extract"]
+
+
+def test_main_fails_closed_when_dotenv_not_loaded_and_required_env_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Arrange
+    command = _command_module()
+    dotenv_path = tmp_path / "missing.env"
+    dotenv_loader = MagicMock(return_value=False)
+    for key in command.REQUIRED_ENV_KEYS + ("HALO_PAGE_SIZE",):
+        monkeypatch.delenv(key, raising=False)
+
+    # Act
+    exit_code = command.main(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
+
+    # Assert
+    assert exit_code == 2
+    dotenv_loader.assert_called_once_with(dotenv_path, override=False)
+
+
+def test_main_fails_closed_when_required_env_is_missing_after_mocked_dotenv_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Arrange
+    command = _command_module()
+    dotenv_path = tmp_path / ".env"
+    dotenv_loader = MagicMock(return_value=True)
+    missing_key = "HALOPSA_CLIENT_SECRET"
+    for key in command.REQUIRED_ENV_KEYS + ("HALO_PAGE_SIZE",):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in _valid_env(**{missing_key: None}).items():
+        monkeypatch.setenv(key, value)
+
+    # Act
+    exit_code = command.main(dotenv_path=dotenv_path, dotenv_loader=dotenv_loader)
+
+    # Assert
+    assert exit_code == 2
+    dotenv_loader.assert_called_once_with(dotenv_path, override=False)
 
 
 def test_run_controlled_halopsa_extract_nominal_mocked_ingestion_returns_counts_only() -> None:
