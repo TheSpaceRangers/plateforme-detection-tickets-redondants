@@ -17,6 +17,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Protocol
 
 from dotenv import load_dotenv
@@ -34,9 +35,16 @@ from backend.app.data.extractors.halopsa_config import (
 )
 from backend.app.data.extractors.halopsa_http_transport import HaloPsaHttpTransport
 from backend.app.data.extractors.halopsa_ticket_extractor import HaloPsaTicketExtractor
-from backend.app.db.repositories.ticket_repository import TicketRepository
+from backend.app.db.postgres_config import (
+    PostgresConnectionConfig,
+    PostgresConfigurationError,
+    is_postgres_write_enabled,
+)
+from backend.app.db.repositories.ticket_repository import PostgresTicketRepository, TicketRepository
 from backend.app.schemas.tickets import IngestionResult
 from backend.app.services.ticket_ingestion_service import TicketIngestionService
+
+_REAL_HALOPSA_HTTP_TRANSPORT_TYPE = HaloPsaHttpTransport
 
 REQUIRED_ENV_KEYS: tuple[str, ...] = (
     "SYNAPPSE_AGENT_ID_HMAC_SECRET",
@@ -141,10 +149,13 @@ def run_controlled_halopsa_extract(
 
     safe_logger = logger or logging.getLogger(__name__)
     config = build_config_from_env(env)
-    if isinstance(transport, HaloPsaHttpTransport) and not _is_network_enabled(env):
+    if _is_real_http_transport(transport) and not _is_network_enabled(env):
         raise ControlledExtractionError("HaloPSA network transport is not explicitly enabled")
+    if isinstance(repository, PostgresTicketRepository) and not is_postgres_write_enabled(env):
+        raise ControlledExtractionError("PostgreSQL ticket writes are not explicitly enabled")
     selected_transport = transport or _build_explicit_network_transport(env)
-    service = ingestion_service or _build_ingestion_service(config, selected_transport, repository)
+    selected_repository = repository or _build_explicit_postgres_repository(env, selected_transport, ingestion_service)
+    service = ingestion_service or _build_ingestion_service(config, selected_transport, selected_repository)
 
     safe_logger.info("Controlled HaloPSA extraction started")
     result = service.ingest_tickets(include_agent_pseudonym=True)
@@ -213,10 +224,51 @@ def _build_explicit_network_transport(env: Mapping[str, str]) -> HaloPsaTranspor
     return None
 
 
+def _build_explicit_postgres_repository(
+    env: Mapping[str, str],
+    transport: HaloPsaTransport | None,
+    ingestion_service: IngestionService | None,
+) -> TicketRepository | None:
+    """Create the real PostgreSQL repository only for the default runtime path."""
+
+    if ingestion_service is not None or transport is None:
+        return None
+    try:
+        postgres_config = PostgresConnectionConfig.from_env(env)
+    except PostgresConfigurationError as exc:
+        raise ControlledExtractionError(str(exc)) from exc
+    return PostgresTicketRepository(
+        connection_factory=_build_postgres_connection_factory(postgres_config),
+        initialize_schema=True,
+    )
+
+
+def _build_postgres_connection_factory(config: PostgresConnectionConfig) -> Callable[[], object]:
+    """Build a lazy psycopg connection factory without opening a connection now."""
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise ControlledExtractionError("PostgreSQL driver psycopg is not installed") from exc
+
+    def connect() -> object:
+        """Open one PostgreSQL connection when ingestion reaches repository storage."""
+
+        return psycopg.connect(**config.connection_kwargs())
+
+    return connect
+
+
 def _is_network_enabled(env: Mapping[str, str]) -> bool:
     """Return whether the runtime explicitly opted in to HaloPSA network calls."""
 
     return env.get(NETWORK_ENABLE_KEY, "").strip().lower() in TRUE_ENV_VALUES
+
+
+def _is_real_http_transport(transport: HaloPsaTransport | None) -> bool:
+    """Detect the real HTTP transport without depending on monkeypatchable symbols."""
+
+    return isinstance(transport, _REAL_HALOPSA_HTTP_TRANSPORT_TYPE)
 
 
 def _parse_page_size(raw_page_size: str | None) -> int:

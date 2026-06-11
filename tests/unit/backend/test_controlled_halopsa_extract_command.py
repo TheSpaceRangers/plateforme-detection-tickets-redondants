@@ -183,6 +183,32 @@ def test_run_controlled_halopsa_extract_blocks_when_transport_is_absent() -> Non
     assert command._is_network_enabled(env) is False
 
 
+@pytest.mark.parametrize("postgres_write_value", [None, "", "false", "0", "no", "unexpected"])
+def test_run_controlled_halopsa_extract_blocks_network_enabled_without_postgres_write(
+    monkeypatch: pytest.MonkeyPatch,
+    postgres_write_value: str | None,
+) -> None:
+    # Arrange
+    command = _command_module()
+    fake_transport = object()
+    transport_factory = MagicMock(return_value=fake_transport)
+    client_factory = MagicMock(side_effect=AssertionError("HaloPSA client must not be created before repository approval"))
+    ingestion_service_factory = MagicMock(side_effect=AssertionError("ingestion service must not be built before repository approval"))
+    monkeypatch.setattr(command, "HaloPsaHttpTransport", transport_factory)
+    monkeypatch.setattr(command, "HaloPsaTicketClient", client_factory)
+    monkeypatch.setattr(command, "TicketIngestionService", ingestion_service_factory)
+    env = _valid_env(HALOPSA_ENABLE_NETWORK="true", POSTGRES_ENABLE_WRITE=postgres_write_value)
+
+    # Act
+    with pytest.raises(command.ControlledExtractionError, match="PostgreSQL ticket writes are not explicitly enabled"):
+        command.run_controlled_halopsa_extract(env=env)
+
+    # Assert
+    transport_factory.assert_called_once_with()
+    client_factory.assert_not_called()
+    ingestion_service_factory.assert_not_called()
+
+
 @pytest.mark.parametrize("enabled_value", ["true", "TRUE", "1", "yes", "on"])
 def test_explicit_network_transport_is_built_only_for_authorized_enable_values(
     monkeypatch: pytest.MonkeyPatch,
