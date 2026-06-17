@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -143,6 +143,129 @@ def test_http_transport_token_error_message_does_not_leak_secret_or_token(
     assert "access token" in error_message
     assert SYNTHETIC_CLIENT_SECRET not in error_message
     assert SYNTHETIC_ACCESS_TOKEN not in error_message
+
+
+def test_token_url_uses_auth_path_from_site_root_when_base_url_contains_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+
+    requests: list[Any] = []
+    responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}'), _JsonResponse('{"tickets":[]}')]
+
+    def fake_urlopen(request: Any, timeout: float) -> _JsonResponse:
+        requests.append(request)
+        return responses.pop(0)
+
+    monkeypatch.setattr(transport_module, "urlopen", fake_urlopen)
+    transport = HaloPsaHttpTransport()
+
+    # Act
+    tuple(transport.fetch_tickets(_valid_config(base_url="https://halopsa.invalid.test/api")))
+
+    # Assert
+    assert requests[0].full_url == "https://halopsa.invalid.test/auth/token"
+
+
+def test_tickets_url_uses_api_tickets_endpoint_and_keeps_page_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+
+    requests: list[Any] = []
+    responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}'), _JsonResponse('{"tickets":[]}')]
+
+    def fake_urlopen(request: Any, timeout: float) -> _JsonResponse:
+        requests.append(request)
+        return responses.pop(0)
+
+    monkeypatch.setattr(transport_module, "urlopen", fake_urlopen)
+    transport = HaloPsaHttpTransport()
+
+    # Act
+    tuple(transport.fetch_tickets(_valid_config(page_size=3)))
+
+    # Assert
+    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?page_size=3"
+
+
+def test_tickets_url_does_not_duplicate_api_segment_when_base_url_already_contains_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+
+    requests: list[Any] = []
+    responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}'), _JsonResponse('{"tickets":[]}')]
+
+    def fake_urlopen(request: Any, timeout: float) -> _JsonResponse:
+        requests.append(request)
+        return responses.pop(0)
+
+    monkeypatch.setattr(transport_module, "urlopen", fake_urlopen)
+    transport = HaloPsaHttpTransport()
+
+    # Act
+    tuple(transport.fetch_tickets(_valid_config(base_url="https://halopsa.invalid.test/api/")))
+
+    # Assert
+    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?page_size=5"
+    assert "/api/api/" not in requests[1].full_url.lower()
+
+
+def test_http_404_error_message_does_not_expose_payload_or_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+
+    responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}')]
+
+    def fake_urlopen(request: Any, timeout: float) -> _JsonResponse:
+        if responses:
+            return responses.pop(0)
+        raise HTTPError(
+            url=request.full_url,
+            code=404,
+            msg=f"not found {SYNTHETIC_CLIENT_SECRET} {SYNTHETIC_RAW_PROVIDER_VALUE}",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(transport_module, "urlopen", fake_urlopen)
+    transport = HaloPsaHttpTransport()
+
+    # Act
+    with pytest.raises(HaloPsaHttpTransportError) as error:
+        tuple(transport.fetch_tickets(_valid_config()))
+
+    # Assert
+    error_message = str(error.value)
+    assert error_message == "HaloPSA HTTP request failed with status 404"
+    assert SYNTHETIC_CLIENT_SECRET not in error_message
+    assert SYNTHETIC_RAW_PROVIDER_VALUE not in error_message
+
+
+def test_page_size_is_capped_before_ticket_url_is_built(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+    from backend.app.data.extractors.halopsa_config import MAX_PAGE_SIZE
+
+    requests: list[Any] = []
+    responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}'), _JsonResponse('{"tickets":[]}')]
+
+    def fake_urlopen(request: Any, timeout: float) -> _JsonResponse:
+        requests.append(request)
+        return responses.pop(0)
+
+    monkeypatch.setattr(transport_module, "urlopen", fake_urlopen)
+    transport = HaloPsaHttpTransport()
+
+    # Act
+    tuple(transport.fetch_tickets(_valid_config(page_size=999)))
+
+    # Assert
+    assert requests[1].full_url.endswith(f"page_size={MAX_PAGE_SIZE}")
 
 
 def test_http_mocked_response_ingests_minimized_ticket_without_raw_provider_payload(
