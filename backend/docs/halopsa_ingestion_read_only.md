@@ -41,6 +41,7 @@ La logique métier restera dans `backend/app/services/` et l'accès PostgreSQL d
 - `HaloPsaExtractorConfig` est injecté par l'appelant et valide en fail-closed `base_url`, `client_id`, `client_secret`, `tenant` et `page_size`, sans charger de `.env`.
 - `HaloPsaTicketClient` ne connaît qu'un `HaloPsaTransport` injecté ; sans transport explicite, `NoopHaloPsaTransport` lève une erreur et ne fait aucun réseau.
 - `HaloPsaTicketExtractor` transforme uniquement les champs allowlistés vers `IncomingTicket` : `external_ticket_id`, `summary`, `details`, `status`, `priority`, `category`, `agent_id`.
+- Le statut accepte les variantes provider minimisées `status`, `status_id`, `statusid`, `ticketstatus` et l'objet `status` via `name` puis `id`; si aucune valeur exploitable n'est présente, le statut interne devient `unknown` sans stockage de payload brut.
 - Les champs bruts hors allowlist ne sont pas transmis au service d'ingestion ni aux repositories.
 
 Intégration future prévue : instancier `TicketIngestionService(extractor=HaloPsaTicketExtractor(client), repository=...)` puis appeler `ingest_tickets()`. Le transport réel devra être fourni par composition et validé séparément par sécurité/conformité.

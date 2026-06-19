@@ -7,6 +7,10 @@ from collections.abc import Iterable, Mapping
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient
 from backend.app.schemas.tickets import IncomingTicket
 
+UNKNOWN_STATUS = "unknown"
+STATUS_FIELD_ALIASES = ("status", "status_id", "statusid", "ticketstatus")
+STATUS_OBJECT_ALIASES = ("name", "id")
+
 
 class InvalidHaloPsaTicketPayloadError(ValueError):
     """Raised when a HaloPSA payload cannot be minimized into an incoming ticket."""
@@ -31,7 +35,7 @@ def _to_incoming_ticket(payload: Mapping[str, object]) -> IncomingTicket:
         external_ticket_id=_required_text(payload, ("id", "ticket_id", "external_ticket_id")),
         summary=_required_text(payload, ("summary", "title")),
         details=_required_text(payload, ("details", "description")),
-        status=_required_text(payload, ("status",)),
+        status=_status_text(payload),
         priority=_optional_text(payload, ("priority",)),
         category=_optional_text(payload, ("category", "ticket_type")),
         agent_id=_optional_text(payload, ("agent_id", "agentId", "assigned_agent_id")),
@@ -53,6 +57,17 @@ def _optional_text(payload: Mapping[str, object], field_names: tuple[str, ...]) 
     value = _first_present(payload, field_names)
     if value is None or not str(value).strip():
         return None
+    return str(value)
+
+
+def _status_text(payload: Mapping[str, object]) -> str:
+    """Return a normalized status from accepted aliases or a safe fallback."""
+
+    value = _first_present(payload, STATUS_FIELD_ALIASES)
+    if isinstance(value, Mapping):
+        value = _first_present(value, STATUS_OBJECT_ALIASES)
+    if value is None or not str(value).strip():
+        return UNKNOWN_STATUS
     return str(value)
 
 
