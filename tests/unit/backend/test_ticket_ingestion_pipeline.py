@@ -179,6 +179,51 @@ def test_residual_pii_in_non_sanitized_fields_blocks_before_storage(field: str, 
     repository.save_many.assert_not_called()
 
 
+def test_hmac_pseudonym_phone_like_digest_is_not_scanned_as_residual_pii(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(agent_id="synthetic-agent-private"),))
+    repository = InMemoryTicketRepository()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+    phone_like_hmac_digest = "hmac_sha256:0612345678abcdef0612345678abcdef0612345678abcdef0612345678abcdef"
+    guarded_record_with_phone_like_pseudonym = {
+        "external_ticket_id": "syn-unit-hmac-phone-like",
+        "summary": "Synthetic clean summary",
+        "details": "Synthetic clean details",
+        "status": "open",
+        "priority": "low",
+        "category": "network",
+        "agent_id_pseudonym": phone_like_hmac_digest,
+    }
+    monkeypatch.setattr(
+        ingestion_module,
+        "build_preprocessed_ticket_dataset",
+        lambda tickets, agent_id_policy: [guarded_record_with_phone_like_pseudonym],
+    )
+
+    # Act
+    result = service.ingest_tickets(include_agent_pseudonym=True)
+
+    # Assert
+    assert result == IngestionResult(extracted_count=1, stored_count=1, status="completed")
+    assert repository.tickets[0].agent_id_pseudonym == phone_like_hmac_digest
+
+
+def test_synthetic_phone_pii_in_non_pseudonymized_text_field_blocks_before_storage() -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(category="callback 0612345678"),))
+    repository = MagicMock()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+
+    # Act
+    with pytest.raises(PiiResidualError) as error:
+        service.ingest_synthetic_tickets()
+
+    # Assert
+    assert "field=category" in str(error.value)
+    assert "categories=fr_phone" in str(error.value)
+    repository.save_many.assert_not_called()
+
+
 def test_services_extractors_and_repositories_do_not_share_state() -> None:
     # Arrange
     extractor_one = SyntheticTicketExtractor(tickets=(_synthetic_ticket(external_ticket_id="syn-isolated-001"),))

@@ -9,6 +9,16 @@ from backend.app.db.repositories.ticket_repository import TicketRepository
 from backend.app.schemas.tickets import IngestionResult, StoredCleanTicket
 
 
+RESIDUAL_PII_TEXT_FIELDS: tuple[str, ...] = (
+    "external_ticket_id",
+    "summary",
+    "details",
+    "status",
+    "priority",
+    "category",
+)
+
+
 class TicketIngestionService:
     """Service layer for ticket ingestion with pre-repository privacy controls."""
 
@@ -29,18 +39,7 @@ class TicketIngestionService:
             (ticket.to_guardrail_mapping() for ticket in incoming_tickets),
             agent_id_policy=AgentIdPolicy(include_pseudonymized=include_agent_pseudonym),
         )
-        assert_no_residual_pii(
-            guarded_records,
-            fields=(
-                "external_ticket_id",
-                "summary",
-                "details",
-                "status",
-                "priority",
-                "category",
-                "agent_id_pseudonym",
-            ),
-        )
+        assert_no_residual_pii(guarded_records, fields=RESIDUAL_PII_TEXT_FIELDS)
         clean_tickets = tuple(StoredCleanTicket.from_guarded_mapping(record) for record in guarded_records)
         stored_count = self._repository.save_many(clean_tickets)
         return IngestionResult(
