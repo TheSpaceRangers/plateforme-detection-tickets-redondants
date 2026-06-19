@@ -6,7 +6,7 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from backend.app.data.extractors.halopsa_config import HaloPsaExtractorConfig
@@ -48,7 +48,7 @@ class HaloPsaHttpTransport:
 
         response = self._request_json(
             method="POST",
-            url=urljoin(_ensure_trailing_slash(config.base_url), config.token_path.lstrip("/")),
+            url=_build_halopsa_url(config.base_url, config.token_path),
             headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
             body=urlencode(form_values).encode("utf-8"),
             timeout_seconds=config.request_timeout_seconds,
@@ -62,7 +62,7 @@ class HaloPsaHttpTransport:
     def _build_tickets_url(self, config: HaloPsaExtractorConfig) -> str:
         """Build a bounded ticket endpoint URL using only non-sensitive query values."""
 
-        endpoint = urljoin(_ensure_trailing_slash(config.base_url), config.tickets_path.lstrip("/"))
+        endpoint = _build_halopsa_url(config.base_url, config.tickets_path)
         separator = "&" if "?" in endpoint else "?"
         return f"{endpoint}{separator}{urlencode({'page_size': config.page_size})}"
 
@@ -99,15 +99,62 @@ class HaloPsaHttpTransport:
     def _extract_ticket_items(self, response: Mapping[str, Any]) -> tuple[Mapping[str, object], ...]:
         """Return provider ticket mappings from accepted HaloPSA list containers."""
 
-        items = response.get("tickets") or response.get("results") or response.get("data")
-        if items is None and isinstance(response.get("items"), list):
-            items = response["items"]
+        items = _first_present_ticket_container(response, ("tickets", "results", "data", "items"))
         if not isinstance(items, list):
             raise HaloPsaHttpTransportError("HaloPSA ticket response did not include a ticket list")
         return tuple(item for item in items if isinstance(item, Mapping))
 
 
-def _ensure_trailing_slash(value: str) -> str:
-    """Return a URL prefix suitable for urllib.parse.urljoin."""
+def _first_present_ticket_container(response: Mapping[str, Any], container_names: tuple[str, ...]) -> Any:
+    """Return the first present ticket list container without treating empty lists as absent."""
 
-    return value if value.endswith("/") else f"{value}/"
+    for container_name in container_names:
+        if container_name in response:
+            return response[container_name]
+    return None
+
+
+def _build_halopsa_url(base_url: str, endpoint_path: str) -> str:
+    """Build a HaloPSA URL while avoiding duplicated API path segments."""
+
+    split_base = urlsplit(base_url.strip())
+    normalized_base_path = split_base.path.rstrip("/")
+    normalized_endpoint_path = endpoint_path.strip()
+    endpoint_query = ""
+    if "?" in normalized_endpoint_path:
+        normalized_endpoint_path, endpoint_query = normalized_endpoint_path.split("?", 1)
+    base_segments = _path_segments(normalized_base_path)
+    endpoint_segments = _path_segments(normalized_endpoint_path)
+
+    if normalized_endpoint_path.startswith("/"):
+        if _starts_with_api_segment(endpoint_segments) and _ends_with_api_segment(base_segments):
+            path_segments = (*base_segments, *endpoint_segments[1:])
+        elif _starts_with_api_segment(endpoint_segments):
+            path_segments = tuple(endpoint_segments)
+        else:
+            path_segments = tuple(endpoint_segments)
+    else:
+        if _starts_with_api_segment(endpoint_segments) and _ends_with_api_segment(base_segments):
+            endpoint_segments = endpoint_segments[1:]
+        path_segments = (*base_segments, *endpoint_segments)
+
+    path = "/" + "/".join(path_segments) if path_segments else ""
+    return urlunsplit((split_base.scheme, split_base.netloc, path, endpoint_query, ""))
+
+
+def _path_segments(path: str) -> tuple[str, ...]:
+    """Return non-empty URL path segments without decoding provider values."""
+
+    return tuple(segment for segment in path.strip("/").split("/") if segment)
+
+
+def _starts_with_api_segment(path_segments: tuple[str, ...]) -> bool:
+    """Return whether URL path segments start with the HaloPSA API segment."""
+
+    return bool(path_segments) and path_segments[0].lower() == "api"
+
+
+def _ends_with_api_segment(path_segments: tuple[str, ...]) -> bool:
+    """Return whether URL path segments end with the HaloPSA API segment."""
+
+    return bool(path_segments) and path_segments[-1].lower() == "api"
