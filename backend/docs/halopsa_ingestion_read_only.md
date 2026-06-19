@@ -39,6 +39,7 @@ La logique métier restera dans `backend/app/services/` et l'accès PostgreSQL d
 
 - `TicketExtractor` définit le protocole découplé attendu par `TicketIngestionService`.
 - `HaloPsaExtractorConfig` est injecté par l'appelant et valide en fail-closed `base_url`, `client_id`, `client_secret`, `tenant` et `page_size`, sans charger de `.env`.
+- Le transport tickets construit une query paginée documentée avec `pageinate=true`, `page_size` issu de `HALO_PAGE_SIZE` et `page_no` issu de `HALO_PAGE_NO` ou `1` par défaut, sans limite totale de volume côté backend.
 - `HaloPsaTicketClient` ne connaît qu'un `HaloPsaTransport` injecté ; sans transport explicite, `NoopHaloPsaTransport` lève une erreur et ne fait aucun réseau.
 - `HaloPsaTicketExtractor` transforme uniquement les champs allowlistés vers `IncomingTicket` : `external_ticket_id`, `summary`, `details`, `status`, `priority`, `category`, `agent_id`.
 - Le contenu `details` accepte les variantes provider minimisées `details`, `description`, `detail`, `body`, `note`, `symptom` et `problem`; en absence totale de détail exploitable, le champ interne devient une chaîne vide afin de continuer vers les garde-fous PII sans persister de payload brut.

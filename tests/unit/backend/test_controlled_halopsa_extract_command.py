@@ -130,6 +130,54 @@ def test_build_config_from_env_uses_safe_default_page_size_when_absent() -> None
     assert config.page_size == 1
 
 
+def test_build_config_from_env_keeps_requested_page_size_one() -> None:
+    # Arrange
+    command = _command_module()
+    env = _valid_env(HALO_PAGE_SIZE="1")
+
+    # Act
+    config = command.build_config_from_env(env)
+
+    # Assert
+    assert config.page_size == 1
+
+
+def test_build_config_from_env_uses_default_page_no_when_absent() -> None:
+    # Arrange
+    command = _command_module()
+    env = _valid_env(HALO_PAGE_NO=None)
+
+    # Act
+    config = command.build_config_from_env(env)
+
+    # Assert
+    assert config.page_no == 1
+
+
+@pytest.mark.parametrize(
+    ("raw_page_no", "expected_message"),
+    [
+        ("0", "strictly positive"),
+        ("-1", "strictly positive"),
+        ("not-an-integer", "must be an integer"),
+    ],
+)
+def test_build_config_from_env_fails_closed_for_unsafe_page_no(
+    raw_page_no: str,
+    expected_message: str,
+) -> None:
+    # Arrange
+    command = _command_module()
+    env = _valid_env(HALO_PAGE_NO=raw_page_no)
+
+    # Act
+    with pytest.raises(command.ControlledExtractionError, match=expected_message):
+        command.build_config_from_env(env)
+
+    # Assert
+    assert env["HALO_PAGE_NO"] == raw_page_no
+
+
 @pytest.mark.parametrize(
     ("raw_page_size", "expected_message"),
     [
@@ -163,7 +211,7 @@ def test_build_config_from_env_caps_page_size_above_safe_limit_to_five() -> None
     config = command.build_config_from_env(env)
 
     # Assert
-    assert config.page_size == 5
+    assert config.page_size == command.MAX_PAGE_SIZE
     assert env["HALO_PAGE_SIZE"] == "25"
 
 

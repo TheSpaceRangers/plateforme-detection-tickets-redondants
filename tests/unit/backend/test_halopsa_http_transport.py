@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -83,7 +84,11 @@ def test_http_transport_fetches_one_synthetic_ticket_with_mocked_urlopen(monkeyp
     assert len(requests) == 2
     assert requests[0].get_method() == "POST"
     assert requests[1].get_method() == "GET"
-    assert "page_size=5" in requests[1].full_url
+    assert _query_values(requests[1].full_url) == {
+        "pageinate": ["true"],
+        "page_size": ["5"],
+        "page_no": ["1"],
+    }
 
 
 def test_http_transport_rejects_response_without_ticket_list(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,7 +193,39 @@ def test_tickets_url_uses_api_tickets_endpoint_and_keeps_page_size(
     tuple(transport.fetch_tickets(_valid_config(page_size=3)))
 
     # Assert
-    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?page_size=3"
+    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?pageinate=true&page_size=3&page_no=1"
+
+
+def test_tickets_url_uses_requested_page_size_one_and_default_page_no_without_total_limit() -> None:
+    # Arrange
+    transport = HaloPsaHttpTransport()
+    config = _valid_config(page_size=1)
+
+    # Act
+    url = transport._build_tickets_url(config)
+
+    # Assert
+    assert _query_values(url) == {
+        "pageinate": ["true"],
+        "page_size": ["1"],
+        "page_no": ["1"],
+    }
+    assert "limit" not in _query_values(url)
+    assert "max_results" not in _query_values(url)
+    assert "total_limit" not in _query_values(url)
+
+
+def test_tickets_url_rejects_undocumented_total_limit_by_only_using_documented_pagination_params() -> None:
+    # Arrange
+    transport = HaloPsaHttpTransport()
+    config = _valid_config(page_size=2, page_no=4)
+
+    # Act
+    url = transport._build_tickets_url(config)
+
+    # Assert
+    assert set(_query_values(url)) == {"pageinate", "page_size", "page_no"}
+    assert _query_values(url)["page_no"] == ["4"]
 
 
 def test_tickets_url_does_not_duplicate_api_segment_when_base_url_already_contains_api(
@@ -211,7 +248,7 @@ def test_tickets_url_does_not_duplicate_api_segment_when_base_url_already_contai
     tuple(transport.fetch_tickets(_valid_config(base_url="https://halopsa.invalid.test/api/")))
 
     # Assert
-    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?page_size=5"
+    assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?pageinate=true&page_size=5&page_no=1"
     assert "/api/api/" not in requests[1].full_url.lower()
 
 
@@ -265,7 +302,7 @@ def test_page_size_is_capped_before_ticket_url_is_built(monkeypatch: pytest.Monk
     tuple(transport.fetch_tickets(_valid_config(page_size=999)))
 
     # Assert
-    assert requests[1].full_url.endswith(f"page_size={MAX_PAGE_SIZE}")
+    assert _query_values(requests[1].full_url)["page_size"] == [str(MAX_PAGE_SIZE)]
 
 
 def test_http_mocked_response_ingests_minimized_ticket_without_raw_provider_payload(
@@ -353,6 +390,10 @@ class _JsonResponse:
 
     def read(self) -> bytes:
         return self._body
+
+
+def _query_values(url: str) -> dict[str, list[str]]:
+    return parse_qs(urlsplit(url).query)
 
 
 class _RecordingRepository:
