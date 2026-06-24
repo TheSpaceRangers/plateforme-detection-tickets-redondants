@@ -113,14 +113,14 @@ def test_agent_id_pseudonymization_matches_exact_hmac_sha256_digest(
 ) -> None:
     """Synthetic agent_id pseudonymization returns the exact HMAC-SHA-256 digest."""
 
-    pseudonymization_material = "synthetic-hmac-input-material"
+    secret = "synthetic-hmac-secret"
     agent_id = "agent-synthetic-456"
     expected_digest = hmac.new(
-        pseudonymization_material.encode("utf-8"),
+        secret.encode("utf-8"),
         agent_id.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    monkeypatch.setenv("SYNAPPSE_AGENT_ID_HMAC_SECRET", pseudonymization_material)
+    monkeypatch.setenv("SYNAPPSE_AGENT_ID_HMAC_SECRET", secret)
     tickets = [{"summary": "Ticket synthétique", "details": "Aucune PII", "agent_id": agent_id}]
 
     dataset = build_preprocessed_ticket_dataset(tickets, AgentIdPolicy(include_pseudonymized=True))
@@ -190,7 +190,6 @@ def test_sanitize_text_masks_email_without_absorbing_terminal_punctuation() -> N
 
     # Arrange
     text = "Réponse attendue de support@example.com, puis clôture."
-
 
     # Act
     result = sanitize_text(text)
