@@ -64,7 +64,12 @@ class HaloPsaHttpTransport:
 
         endpoint = _build_halopsa_url(config.base_url, config.tickets_path)
         separator = "&" if "?" in endpoint else "?"
-        return f"{endpoint}{separator}{urlencode({'page_size': config.page_size})}"
+        query_params = {
+            "pageinate": "true",
+            "page_size": config.page_size,
+            "page_no": config.page_no,
+        }
+        return f"{endpoint}{separator}{urlencode(query_params)}"
 
     def _request_json(
         self,

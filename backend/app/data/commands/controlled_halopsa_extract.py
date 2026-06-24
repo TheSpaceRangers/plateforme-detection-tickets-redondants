@@ -6,6 +6,7 @@ runtime configuration and then stops unless an explicit network transport and a
 repository-backed ingestion service are injected by integration code.
 
 HALO_PAGE_SIZE defaults to 1 when absent and is capped at 5.
+HALO_PAGE_NO defaults to 1 when absent.
 HALOPSA_ENABLE_NETWORK=true is required before the real HTTP transport is built.
 """
 
@@ -14,10 +15,9 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable
 from typing import Protocol
 
 from dotenv import load_dotenv
@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient, HaloPsaTransport
 from backend.app.data.extractors.halopsa_config import (
     DEFAULT_MAX_RETRIES,
+    DEFAULT_PAGE_NO,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     DEFAULT_TICKETS_PATH,
     DEFAULT_TOKEN_PATH,
@@ -105,6 +106,11 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
         raise ControlledExtractionError(f"Missing required runtime variables: {', '.join(missing_keys)}")
 
     page_size = _parse_page_size(env.get("HALO_PAGE_SIZE"))
+    page_no = _parse_positive_int(
+        env.get("HALO_PAGE_NO"),
+        default_value=DEFAULT_PAGE_NO,
+        field_name="HALO_PAGE_NO",
+    )
     config = HaloPsaExtractorConfig(
         base_url=env["HALOPSA_BASE_URL"].strip(),
         client_id=env["HALOPSA_CLIENT_ID"].strip(),
@@ -112,6 +118,7 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
         tenant=env["HALOPSA_TENANT"].strip(),
         scope=env["HALO_SCOPE"].strip(),
         page_size=page_size,
+        page_no=page_no,
         request_timeout_seconds=_parse_positive_float(
             env.get("HALOPSA_REQUEST_TIMEOUT_SECONDS"),
             default_value=DEFAULT_REQUEST_TIMEOUT_SECONDS,
@@ -283,6 +290,20 @@ def _parse_page_size(raw_page_size: str | None) -> int:
     if page_size <= 0:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be strictly positive")
     return min(page_size, MAX_PAGE_SIZE)
+
+
+def _parse_positive_int(raw_value: str | None, *, default_value: int, field_name: str) -> int:
+    """Parse a strictly positive integer runtime setting without exposing its raw value."""
+
+    if raw_value is None or not raw_value.strip():
+        return default_value
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ControlledExtractionError(f"{field_name} must be an integer") from exc
+    if value <= 0:
+        raise ControlledExtractionError(f"{field_name} must be strictly positive")
+    return value
 
 
 def _parse_positive_float(raw_value: str | None, *, default_value: float, field_name: str) -> float:
