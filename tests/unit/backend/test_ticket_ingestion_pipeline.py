@@ -97,7 +97,7 @@ def test_ingest_synthetic_tickets_propagates_repository_database_errors_fail_clo
 
 def test_ingest_synthetic_tickets_blocks_residual_pii_before_repository_save() -> None:
     # Arrange
-    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(category="owner synthetic@example.test"),))
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(category="callback 0612345678"),))
     repository = MagicMock()
     service = TicketIngestionService(extractor=extractor, repository=repository)
 
@@ -205,24 +205,114 @@ def test_agent_id_is_excluded_by_default_from_stored_objects_and_postgres_mappin
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    ("field", "value", "expected_value"),
     [
-        ("category", "owner synthetic@example.test"),
-        ("external_ticket_id", "synthetic@example.test"),
+        ("category", "owner synthetic@example.test", "owner [EMAIL]"),
+        ("external_ticket_id", "synthetic@example.test", "[EMAIL]"),
     ],
 )
-def test_residual_pii_in_non_sanitized_fields_blocks_before_storage(field: str, value: str) -> None:
+def test_synthetic_email_in_residual_scan_fields_is_sanitized_before_storage(
+    field: str,
+    value: str,
+    expected_value: str,
+) -> None:
     # Arrange
     extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(**{field: value}),))
-    repository = MagicMock()
+    repository = InMemoryTicketRepository()
     service = TicketIngestionService(extractor=extractor, repository=repository)
 
     # Act
-    with pytest.raises(PiiResidualError) as error:
+    result = service.ingest_synthetic_tickets()
+
+    # Assert
+    assert result == IngestionResult(extracted_count=1, stored_count=1, status="completed")
+    stored_ticket = repository.tickets[0]
+    assert getattr(stored_ticket, field) == expected_value
+    assert "@" not in getattr(stored_ticket, field)
+
+
+def test_ingestion_pre_sanitizes_scanned_fields_before_ml_preprocessing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(
+        tickets=(
+            _synthetic_ticket(
+                external_ticket_id="qa.person@example.test",
+                summary="Contact <qa.person@example.test>",
+                details="<p>Owner qa.person&#64;example.test</p>",
+                status="mailto:qa.person@example.test",
+                priority="owner (qa.person@example.test)",
+                category="qa.o'neil/team_test-alpha@example.engineering",
+            ),
+        )
+    )
+    repository = InMemoryTicketRepository()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+    captured_records: list[dict[str, object]] = []
+
+    def _record_preprocessed_dataset(tickets: object, agent_id_policy: object) -> list[dict[str, object]]:
+        captured_records.extend(dict(ticket) for ticket in tickets)  # type: ignore[arg-type]
+        return [
+            {field: value for field, value in record.items() if field != "agent_id"}
+            for record in captured_records
+        ]
+
+    monkeypatch.setattr(ingestion_module, "build_preprocessed_ticket_dataset", _record_preprocessed_dataset)
+
+    # Act
+    result = service.ingest_synthetic_tickets()
+
+    # Assert
+    assert result == IngestionResult(extracted_count=1, stored_count=1, status="completed")
+    assert captured_records == [
+        {
+            "external_ticket_id": "[EMAIL]",
+            "summary": "Contact [EMAIL]",
+            "details": "Owner [EMAIL]",
+            "status": "[EMAIL]",
+            "priority": "owner ([EMAIL])",
+            "category": "[EMAIL]",
+            "agent_id": "synthetic-agent-001",
+        }
+    ]
+
+
+def test_ingestion_still_calls_final_residual_scan_after_preprocessing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(summary="Contact qa.person@example.test"),))
+    repository = InMemoryTicketRepository()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+    calls: list[tuple[list[dict[str, object]], tuple[str, ...]]] = []
+
+    def _record_residual_scan(records: list[dict[str, object]], fields: tuple[str, ...]) -> None:
+        calls.append((records, fields))
+
+    monkeypatch.setattr(ingestion_module, "assert_no_residual_pii", _record_residual_scan)
+
+    # Act
+    result = service.ingest_synthetic_tickets()
+
+    # Assert
+    assert result == IngestionResult(extracted_count=1, stored_count=1, status="completed")
+    assert len(calls) == 1
+    assert calls[0][1] == ingestion_module.RESIDUAL_PII_TEXT_FIELDS
+
+
+def test_ingestion_does_not_save_when_final_residual_scan_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(summary="Synthetic clean summary"),))
+    repository = MagicMock()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+
+    def _fail_residual_scan(records: list[dict[str, object]], fields: tuple[str, ...]) -> None:
+        raise RuntimeError("synthetic residual scan failure")
+
+    monkeypatch.setattr(ingestion_module, "assert_no_residual_pii", _fail_residual_scan)
+
+    # Act
+    with pytest.raises(RuntimeError, match="synthetic residual scan failure"):
         service.ingest_synthetic_tickets()
 
     # Assert
-    assert f"field={field}" in str(error.value)
     repository.save_many.assert_not_called()
 
 
