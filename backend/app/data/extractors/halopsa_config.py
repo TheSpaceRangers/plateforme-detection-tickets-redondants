@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 SAFE_DEFAULT_PAGE_SIZE = 1
 DEFAULT_PAGE_NO = 1
-MAX_PAGE_SIZE = 5
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_TOKEN_PATH = "/auth/token"
@@ -33,11 +32,6 @@ class HaloPsaExtractorConfig:
     token_path: str = DEFAULT_TOKEN_PATH
     tickets_path: str = DEFAULT_TICKETS_PATH
 
-    def __post_init__(self) -> None:
-        """Normalize bounded operational settings without exposing sensitive values."""
-
-        object.__setattr__(self, "page_size", min(self.page_size, MAX_PAGE_SIZE))
-
     def validate(self) -> None:
         """Fail closed when a required setting is absent before any usage."""
 
@@ -55,8 +49,12 @@ class HaloPsaExtractorConfig:
             raise InvalidHaloPsaConfigurationError(
                 f"Incomplete HaloPSA extractor configuration: {', '.join(missing_fields)}"
             )
+        if not isinstance(self.page_size, int) or isinstance(self.page_size, bool):
+            raise InvalidHaloPsaConfigurationError("HaloPSA page_size must be an integer")
         if self.page_size <= 0:
             raise InvalidHaloPsaConfigurationError("HaloPSA page_size must be strictly positive")
+        if not isinstance(self.page_no, int) or isinstance(self.page_no, bool):
+            raise InvalidHaloPsaConfigurationError("HaloPSA page_no must be an integer")
         if self.page_no <= 0:
             raise InvalidHaloPsaConfigurationError("HaloPSA page_no must be strictly positive")
         if self.request_timeout_seconds <= 0:
