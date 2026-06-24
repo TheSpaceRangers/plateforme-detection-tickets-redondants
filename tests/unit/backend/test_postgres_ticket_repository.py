@@ -137,6 +137,52 @@ def test_postgres_repository_inserts_only_allowlisted_clean_ticket_columns() -> 
     assert tuple(field.name for field in fields(ticket)) == ALLOWED_CLEAN_COLUMNS
 
 
+def test_postgres_repository_ignores_duplicate_external_ticket_id_without_unique_violation() -> None:
+    # Arrange
+    duplicate_ticket = StoredCleanTicket(
+        external_ticket_id="syn-duplicate-001",
+        summary="Synthetic duplicate summary",
+        details="Synthetic duplicate details",
+        status="open",
+        priority="medium",
+        category="identity_access",
+        agent_id_pseudonym=None,
+    )
+    cursor = _RecordingCursor(rowcounts=(1, 0))
+    repository = PostgresTicketRepository(connection_factory=lambda: _RecordingConnection(cursor))
+
+    # Act
+    stored_count = repository.save_many((duplicate_ticket, duplicate_ticket))
+
+    # Assert
+    assert stored_count == 1
+    assert len(cursor.values) == 2
+    assert "ON CONFLICT (external_ticket_id) DO NOTHING" in cursor.statement
+
+
+def test_postgres_repository_propagates_non_duplicate_database_errors() -> None:
+    # Arrange
+    ticket = StoredCleanTicket(
+        external_ticket_id="syn-db-error-001",
+        summary="Synthetic database error summary",
+        details="Synthetic database error details",
+        status="open",
+        priority="low",
+        category="network",
+        agent_id_pseudonym=None,
+    )
+    database_error = RuntimeError("synthetic database unavailable")
+    cursor = _RecordingCursor(error=database_error)
+    repository = PostgresTicketRepository(connection_factory=lambda: _RecordingConnection(cursor))
+
+    # Act
+    with pytest.raises(RuntimeError, match="synthetic database unavailable"):
+        repository.save_many((ticket,))
+
+    # Assert
+    assert cursor.values == []
+
+
 def test_postgres_repository_rejects_raw_payload_mapping_before_connection_is_opened() -> None:
     # Arrange
     connection_factory = _FailingConnectionFactory()
@@ -176,9 +222,12 @@ class _FailingConnectionFactory:
 
 
 class _RecordingCursor:
-    def __init__(self) -> None:
+    def __init__(self, *, rowcounts: Sequence[int] = (1,), error: Exception | None = None) -> None:
         self.statement = ""
         self.values: list[tuple[Any, ...]] = []
+        self.rowcount = 0
+        self._rowcounts = tuple(rowcounts)
+        self._error = error
 
     def __enter__(self) -> "_RecordingCursor":
         return self
@@ -189,6 +238,17 @@ class _RecordingCursor:
     def executemany(self, statement: str, values: Sequence[tuple[Any, ...]]) -> None:
         self.statement = statement
         self.values = list(values)
+
+    def execute(self, statement: str, value: tuple[Any, ...] | None = None) -> None:
+        if self._error is not None:
+            raise self._error
+        self.statement = statement
+        if value is None:
+            self.rowcount = 0
+            return
+        self.values.append(value)
+        index = len(self.values) - 1
+        self.rowcount = self._rowcounts[index] if index < len(self._rowcounts) else self._rowcounts[-1]
 
 
 class _RecordingConnection:

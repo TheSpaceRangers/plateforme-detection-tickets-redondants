@@ -48,6 +48,53 @@ def test_ingest_synthetic_tickets_stores_only_clean_tickets_with_matching_counts
     assert all(not hasattr(ticket, "agent_id") for ticket in repository.tickets)
 
 
+def test_ingest_synthetic_tickets_counts_duplicate_external_ticket_id_as_ignored() -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(), _synthetic_ticket()))
+    repository = _UniqueExternalIdRepository()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+
+    # Act
+    result = service.ingest_synthetic_tickets()
+
+    # Assert
+    assert result.extracted_count == 2
+    assert result.stored_count == 1
+    assert result.ignored_count == 1
+    assert result.status == "completed"
+
+
+def test_ingest_synthetic_tickets_counts_new_ticket_as_stored_not_ignored() -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(external_ticket_id="syn-new-001"),))
+    repository = _UniqueExternalIdRepository()
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+
+    # Act
+    result = service.ingest_synthetic_tickets()
+
+    # Assert
+    assert result.extracted_count == 1
+    assert result.stored_count == 1
+    assert result.ignored_count == 0
+    assert result.status == "completed"
+
+
+def test_ingest_synthetic_tickets_propagates_repository_database_errors_fail_closed() -> None:
+    # Arrange
+    extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(external_ticket_id="syn-db-error-002"),))
+    repository = MagicMock()
+    repository.save_many.side_effect = RuntimeError("synthetic database unavailable")
+    service = TicketIngestionService(extractor=extractor, repository=repository)
+
+    # Act
+    with pytest.raises(RuntimeError, match="synthetic database unavailable"):
+        service.ingest_synthetic_tickets()
+
+    # Assert
+    repository.save_many.assert_called_once()
+
+
 def test_ingest_synthetic_tickets_blocks_residual_pii_before_repository_save() -> None:
     # Arrange
     extractor = SyntheticTicketExtractor(tickets=(_synthetic_ticket(category="owner synthetic@example.test"),))
@@ -266,6 +313,7 @@ class _RecordingCursor:
     def __init__(self) -> None:
         self.statement = ""
         self.values: list[tuple[Any, ...]] = []
+        self.rowcount = 0
 
     def __enter__(self) -> "_RecordingCursor":
         return self
@@ -276,6 +324,30 @@ class _RecordingCursor:
     def executemany(self, statement: str, values: Sequence[tuple[Any, ...]]) -> None:
         self.statement = statement
         self.values = list(values)
+
+    def execute(self, statement: str, value: tuple[Any, ...] | None = None) -> None:
+        self.statement = statement
+        if value is None:
+            self.rowcount = 0
+            return
+        self.values.append(value)
+        self.rowcount = 1
+
+
+class _UniqueExternalIdRepository:
+    def __init__(self) -> None:
+        self._seen_external_ids: set[str] = set()
+        self.tickets: list[StoredCleanTicket] = []
+
+    def save_many(self, tickets: Sequence[StoredCleanTicket]) -> int:
+        stored_count = 0
+        for ticket in tickets:
+            if ticket.external_ticket_id in self._seen_external_ids:
+                continue
+            self._seen_external_ids.add(ticket.external_ticket_id)
+            self.tickets.append(ticket)
+            stored_count += 1
+        return stored_count
 
 
 class _RecordingConnection:

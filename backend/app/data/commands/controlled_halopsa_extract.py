@@ -96,6 +96,7 @@ class ControlledExtractionResult:
     extracted_count: int
     stored_count: int
     status: str
+    ignored_count: int = 0
 
 
 def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
@@ -166,14 +167,17 @@ def run_controlled_halopsa_extract(
 
     safe_logger.info("Controlled HaloPSA extraction started")
     result = service.ingest_tickets(include_agent_pseudonym=True)
+    ignored_count = getattr(result, "ignored_count", 0)
     safe_logger.info(
-        "Controlled HaloPSA extraction completed with extracted_count=%s stored_count=%s",
+        "Controlled HaloPSA extraction completed with extracted_count=%s stored_count=%s ignored_count=%s",
         result.extracted_count,
         result.stored_count,
+        ignored_count,
     )
     return ControlledExtractionResult(
         extracted_count=result.extracted_count,
         stored_count=result.stored_count,
+        ignored_count=ignored_count,
         status=result.status,
     )
 

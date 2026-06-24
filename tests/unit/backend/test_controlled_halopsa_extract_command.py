@@ -415,6 +415,7 @@ def test_run_controlled_halopsa_extract_nominal_mocked_ingestion_returns_counts_
     ingestion_service.ingest_tickets.return_value = IngestionResult(
         extracted_count=3,
         stored_count=2,
+        ignored_count=1,
         status="completed",
     )
 
@@ -423,8 +424,13 @@ def test_run_controlled_halopsa_extract_nominal_mocked_ingestion_returns_counts_
 
     # Assert
     ingestion_service.ingest_tickets.assert_called_once_with(include_agent_pseudonym=True)
-    assert result == command.ControlledExtractionResult(extracted_count=3, stored_count=2, status="completed")
-    assert tuple(field.name for field in fields(result)) == ("extracted_count", "stored_count", "status")
+    assert result == command.ControlledExtractionResult(
+        extracted_count=3,
+        stored_count=2,
+        ignored_count=1,
+        status="completed",
+    )
+    assert tuple(field.name for field in fields(result)) == ("extracted_count", "stored_count", "status", "ignored_count")
 
 
 def test_run_controlled_halopsa_extract_logs_no_env_values_or_ticket_content(caplog: pytest.LogCaptureFixture) -> None:
@@ -435,6 +441,7 @@ def test_run_controlled_halopsa_extract_logs_no_env_values_or_ticket_content(cap
     ingestion_service.ingest_tickets.return_value = IngestionResult(
         extracted_count=1,
         stored_count=1,
+        ignored_count=0,
         status="completed",
     )
     forbidden_log_fragments = set(env.values()) | {
@@ -451,4 +458,6 @@ def test_run_controlled_halopsa_extract_logs_no_env_values_or_ticket_content(cap
     assert result.status == "completed"
     rendered_logs = "\n".join(record.getMessage() for record in caplog.records)
     assert "extracted_count=1" in rendered_logs
+    assert "stored_count=1" in rendered_logs
+    assert "ignored_count=0" in rendered_logs
     assert not any(fragment in rendered_logs for fragment in forbidden_log_fragments)
