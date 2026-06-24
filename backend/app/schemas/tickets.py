@@ -77,3 +77,4 @@ class IngestionResult:
     extracted_count: int
     stored_count: int
     status: str
+    ignored_count: int = 0

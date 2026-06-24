@@ -66,6 +66,7 @@ class PostgresTicketRepository:
                 agent_id_pseudonym
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (external_ticket_id) DO NOTHING
         """
         values = [
             (
@@ -84,8 +85,11 @@ class PostgresTicketRepository:
         with connection:
             with connection.cursor() as cursor:
                 self._ensure_schema(cursor)
-                cursor.executemany(insert_statement, values)
-        return len(tickets)
+                stored_count = 0
+                for value in values:
+                    cursor.execute(insert_statement, value)
+                    stored_count += cursor.rowcount
+        return stored_count
 
     def _ensure_schema(self, cursor: Any) -> None:
         """Create the allowlisted clean ticket table when explicitly requested."""

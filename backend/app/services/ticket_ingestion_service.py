@@ -42,8 +42,10 @@ class TicketIngestionService:
         assert_no_residual_pii(guarded_records, fields=RESIDUAL_PII_TEXT_FIELDS)
         clean_tickets = tuple(StoredCleanTicket.from_guarded_mapping(record) for record in guarded_records)
         stored_count = self._repository.save_many(clean_tickets)
+        ignored_count = len(clean_tickets) - stored_count
         return IngestionResult(
             extracted_count=len(incoming_tickets),
             stored_count=stored_count,
+            ignored_count=ignored_count,
             status="completed",
         )
