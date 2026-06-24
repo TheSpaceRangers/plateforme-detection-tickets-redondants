@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient
+from backend.app.data.sanitizers import sanitize_provider_text
 from backend.app.schemas.tickets import IncomingTicket
 
 UNKNOWN_STATUS = "unknown"
@@ -47,7 +48,7 @@ def _to_incoming_ticket(payload: Mapping[str, object]) -> IncomingTicket:
         status=_status_text(payload),
         priority=_optional_text(payload, ("priority",)),
         category=_optional_text(payload, ("category", "ticket_type")),
-        agent_id=_optional_text(payload, ("agent_id", "agentId", "assigned_agent_id")),
+        agent_id=_optional_identifier(payload, ("agent_id", "agentId", "assigned_agent_id")),
     )
 
 
@@ -66,6 +67,19 @@ def _optional_text(payload: Mapping[str, object], field_names: tuple[str, ...]) 
     return _first_non_blank_text(payload, field_names)
 
 
+def _optional_identifier(payload: Mapping[str, object], field_names: tuple[str, ...]) -> str | None:
+    """Return an optional provider identifier for downstream HMAC pseudonymization."""
+
+    for field_name in field_names:
+        value = payload.get(field_name)
+        if value is None:
+            continue
+        identifier = str(value).strip()
+        if identifier:
+            return identifier
+    return None
+
+
 def _details_text(payload: Mapping[str, object]) -> str:
     """Return ticket details from supported aliases or an explicit safe empty fallback."""
 
@@ -81,9 +95,10 @@ def _status_text(payload: Mapping[str, object]) -> str:
     value = _first_present(payload, STATUS_FIELD_ALIASES)
     if isinstance(value, Mapping):
         value = _first_present(value, STATUS_OBJECT_ALIASES)
-    if value is None or not str(value).strip():
+    status = sanitize_provider_text(value)
+    if not status:
         return UNKNOWN_STATUS
-    return str(value)
+    return status
 
 
 def _first_present(payload: Mapping[str, object], field_names: tuple[str, ...]) -> object | None:
@@ -103,7 +118,7 @@ def _first_non_blank_text(payload: Mapping[str, object], field_names: tuple[str,
             continue
         if payload[field_name] is None:
             continue
-        value = str(payload[field_name]).strip()
+        value = sanitize_provider_text(payload[field_name])
         if value:
             return value
     return None
