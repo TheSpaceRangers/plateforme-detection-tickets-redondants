@@ -3,7 +3,7 @@
 `controlled_halopsa_extract.py` is a fail-closed entrypoint for future controlled HaloPSA extraction.
 
 - It does not load `.env` files and never logs secret values.
-- `HALO_PAGE_SIZE` defaults to `1` when absent and is capped at `5`.
+- `HALO_PAGE_SIZE` defaults to `1` when absent and is passed through unchanged when strictly positive.
 - `HALO_PAGE_NO` defaults to `1` when absent; the ticket query always sends `pageinate=true`.
 - Standalone execution validates runtime variables, then blocks unless `HALOPSA_ENABLE_NETWORK=true` and `POSTGRES_ENABLE_WRITE=true` are both explicit.
 - Real extraction must go through `TicketIngestionService`, which applies PII/HMAC guardrails before repository storage.

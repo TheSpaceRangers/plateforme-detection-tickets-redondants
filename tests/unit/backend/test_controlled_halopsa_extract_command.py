@@ -195,24 +195,24 @@ def test_build_config_from_env_fails_closed_for_unsafe_page_size(
     env = _valid_env(HALO_PAGE_SIZE=raw_page_size)
 
     # Act
-    with pytest.raises(command.ControlledExtractionError, match=expected_message):
+    with pytest.raises(command.ControlledExtractionError, match=expected_message) as error:
         command.build_config_from_env(env)
 
     # Assert
-    assert env["HALO_PAGE_SIZE"] == raw_page_size
+    assert raw_page_size not in str(error.value)
 
 
-def test_build_config_from_env_caps_page_size_above_safe_limit_to_five() -> None:
+def test_build_config_from_env_keeps_requested_page_size_250_without_cap_to_five() -> None:
     # Arrange
     command = _command_module()
-    env = _valid_env(HALO_PAGE_SIZE="25")
+    env = _valid_env(HALO_PAGE_SIZE="250")
 
     # Act
     config = command.build_config_from_env(env)
 
     # Assert
-    assert config.page_size == command.MAX_PAGE_SIZE
-    assert env["HALO_PAGE_SIZE"] == "25"
+    assert config.page_size == 250
+    assert config.page_size != 5
 
 
 def test_run_controlled_halopsa_extract_blocks_when_transport_is_absent() -> None:

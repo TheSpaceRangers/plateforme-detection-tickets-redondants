@@ -6,11 +6,12 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
+from unittest.mock import MagicMock
 
 import pytest
 
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient
-from backend.app.data.extractors.halopsa_config import HaloPsaExtractorConfig
+from backend.app.data.extractors.halopsa_config import HaloPsaExtractorConfig, InvalidHaloPsaConfigurationError
 from backend.app.data.extractors.halopsa_http_transport import (
     HaloPsaHttpTransport,
     HaloPsaHttpTransportError,
@@ -196,6 +197,24 @@ def test_tickets_url_uses_api_tickets_endpoint_and_keeps_page_size(
     assert requests[1].full_url == "https://halopsa.invalid.test/api/Tickets?pageinate=true&page_size=3&page_no=1"
 
 
+def test_tickets_url_uses_requested_page_size_250_without_cap_to_five() -> None:
+    # Arrange
+    transport = HaloPsaHttpTransport()
+    config = _valid_config(page_size=250, page_no=7)
+
+    # Act
+    url = transport._build_tickets_url(config)
+
+    # Assert
+    query_values = _query_values(url)
+    assert query_values == {
+        "pageinate": ["true"],
+        "page_size": ["250"],
+        "page_no": ["7"],
+    }
+    assert query_values["page_size"] != ["5"]
+
+
 def test_tickets_url_uses_requested_page_size_one_and_default_page_no_without_total_limit() -> None:
     # Arrange
     transport = HaloPsaHttpTransport()
@@ -283,10 +302,9 @@ def test_http_404_error_message_does_not_expose_payload_or_secret(monkeypatch: p
     assert SYNTHETIC_RAW_PROVIDER_VALUE not in error_message
 
 
-def test_page_size_is_capped_before_ticket_url_is_built(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_tickets_uses_requested_page_size_250_without_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
     # Arrange
     from backend.app.data.extractors import halopsa_http_transport as transport_module
-    from backend.app.data.extractors.halopsa_config import MAX_PAGE_SIZE
 
     requests: list[Any] = []
     responses = [_JsonResponse('{"access_token":"synthetic-access-token-never-log"}'), _JsonResponse('{"tickets":[]}')]
@@ -299,10 +317,32 @@ def test_page_size_is_capped_before_ticket_url_is_built(monkeypatch: pytest.Monk
     transport = HaloPsaHttpTransport()
 
     # Act
-    tuple(transport.fetch_tickets(_valid_config(page_size=999)))
+    tuple(transport.fetch_tickets(_valid_config(page_size=250)))
 
     # Assert
-    assert _query_values(requests[1].full_url)["page_size"] == [str(MAX_PAGE_SIZE)]
+    query_values = _query_values(requests[1].full_url)
+    assert query_values["page_size"] == ["250"]
+    assert query_values["page_size"] != ["5"]
+    assert query_values["pageinate"] == ["true"]
+    assert query_values["page_no"] == ["1"]
+
+
+def test_fetch_tickets_rejects_null_page_size_before_urlopen(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    from backend.app.data.extractors import halopsa_http_transport as transport_module
+
+    urlopen = MagicMock(side_effect=AssertionError("urlopen must not be called for invalid page_size"))
+    monkeypatch.setattr(transport_module, "urlopen", urlopen)
+    transport = HaloPsaHttpTransport()
+    config = _valid_config(page_size=None)
+
+    # Act
+    with pytest.raises(InvalidHaloPsaConfigurationError, match="page_size must be an integer") as error:
+        tuple(transport.fetch_tickets(config))
+
+    # Assert
+    urlopen.assert_not_called()
+    assert "None" not in str(error.value)
 
 
 def test_http_mocked_response_ingests_minimized_ticket_without_raw_provider_payload(

@@ -5,7 +5,7 @@ connections, or persist tickets at import time. The default CLI path validates
 runtime configuration and then stops unless an explicit network transport and a
 repository-backed ingestion service are injected by integration code.
 
-HALO_PAGE_SIZE defaults to 1 when absent and is capped at 5.
+HALO_PAGE_SIZE defaults to 1 when absent and is passed through when strictly positive.
 HALO_PAGE_NO defaults to 1 when absent.
 HALOPSA_ENABLE_NETWORK=true is required before the real HTTP transport is built.
 """
@@ -29,7 +29,6 @@ from backend.app.data.extractors.halopsa_config import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     DEFAULT_TICKETS_PATH,
     DEFAULT_TOKEN_PATH,
-    MAX_PAGE_SIZE,
     SAFE_DEFAULT_PAGE_SIZE,
     HaloPsaExtractorConfig,
     InvalidHaloPsaConfigurationError,
@@ -283,7 +282,7 @@ def _is_real_http_transport(transport: HaloPsaTransport | None) -> bool:
 
 
 def _parse_page_size(raw_page_size: str | None) -> int:
-    """Parse HALO_PAGE_SIZE with a safe default and cap values above the maximum."""
+    """Parse HALO_PAGE_SIZE with a safe default and no application cap."""
 
     if raw_page_size is None or not raw_page_size.strip():
         return SAFE_DEFAULT_PAGE_SIZE
@@ -293,7 +292,7 @@ def _parse_page_size(raw_page_size: str | None) -> int:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be an integer") from exc
     if page_size <= 0:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be strictly positive")
-    return min(page_size, MAX_PAGE_SIZE)
+    return page_size
 
 
 def _parse_positive_int(raw_value: str | None, *, default_value: int, field_name: str) -> int:
