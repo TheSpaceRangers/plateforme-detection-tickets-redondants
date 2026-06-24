@@ -9,6 +9,11 @@ from typing import Iterable, Mapping, Pattern
 
 TEXT_FIELDS: tuple[str, str] = ("summary", "details")
 
+_EMAIL_LOCAL_PART = r"[A-Z0-9](?:[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{0,62}[A-Z0-9])?"
+_EMAIL_DOMAIN_LABEL = r"[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?"
+_EMAIL_DOMAIN = rf"(?:{_EMAIL_DOMAIN_LABEL}\.)+[A-Z]{{2,63}}"
+_EMAIL_PATTERN = rf"(?<![A-Z0-9.!#$%&'*+/=?^_`{{|}}~-]){_EMAIL_LOCAL_PART}@{_EMAIL_DOMAIN}(?![A-Z0-9-])"
+
 
 @dataclass(frozen=True)
 class PiiMatch:
@@ -33,7 +38,7 @@ class PiiResidualError(ValueError):
 
 
 PII_PATTERNS: Mapping[str, Pattern[str]] = {
-    "email": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    "email": re.compile(_EMAIL_PATTERN, re.IGNORECASE),
     "fr_phone": re.compile(r"(?<!\d)(?:\+33|0033|0)\s*[1-9](?:[\s.-]*\d{2}){4}(?!\d)"),
     "ipv4": re.compile(
         r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
