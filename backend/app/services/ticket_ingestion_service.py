@@ -36,8 +36,11 @@ class TicketIngestionService:
         """Run source-agnostic extraction, ML privacy guardrails, and sanitized storage."""
 
         incoming_tickets = tuple(self._extractor.extract())
+        sanitized_mappings = _sanitize_guardrail_mappings(
+            tuple(ticket.to_guardrail_mapping() for ticket in incoming_tickets)
+        )
         guarded_records = build_preprocessed_ticket_dataset(
-            (_sanitize_guardrail_mapping(ticket.to_guardrail_mapping()) for ticket in incoming_tickets),
+            sanitized_mappings,
             agent_id_policy=AgentIdPolicy(include_pseudonymized=include_agent_pseudonym),
         )
         assert_no_residual_pii(guarded_records, fields=RESIDUAL_PII_TEXT_FIELDS)
@@ -50,6 +53,12 @@ class TicketIngestionService:
             ignored_count=ignored_count,
             status="completed",
         )
+
+
+def _sanitize_guardrail_mappings(records: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
+    """Apply provider sanitization to every mapping before ML preprocessing starts."""
+
+    return tuple(_sanitize_guardrail_mapping(record) for record in records)
 
 
 def _sanitize_guardrail_mapping(record: dict[str, object]) -> dict[str, object]:

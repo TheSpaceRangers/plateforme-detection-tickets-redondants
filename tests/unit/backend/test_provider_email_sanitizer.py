@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.data.sanitizers import EMAIL_REPLACEMENT, sanitize_provider_text
+from backend.app.data import sanitizers as provider_sanitizers
+from backend.app.data.sanitizers import sanitize_provider_text
+from ml.src.preprocessing.pii import PiiSanitizationResult, detect_pii
+
+
+EMAIL_REPLACEMENT = "[EMAIL]"
 
 
 @pytest.mark.parametrize(
@@ -51,3 +56,37 @@ def test_sanitize_provider_text_does_not_mask_non_email_synthetic_text(raw_text:
 
     # Assert
     assert EMAIL_REPLACEMENT not in sanitized
+
+
+def test_sanitize_provider_text_uses_ml_sanitizer_as_source_of_truth(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    raw_text = "Escalate to detector-owned-token"
+    calls: list[str] = []
+
+    def _fake_ml_sanitize_text(text: str) -> PiiSanitizationResult:
+        calls.append(text)
+        return PiiSanitizationResult(
+            text=text.replace("detector-owned-token", EMAIL_REPLACEMENT),
+            removed_categories=("email",),
+        )
+
+    monkeypatch.setattr(provider_sanitizers, "sanitize_text", _fake_ml_sanitize_text)
+
+    # Act
+    sanitized = sanitize_provider_text(raw_text)
+
+    # Assert
+    assert calls == [raw_text]
+    assert sanitized == f"Escalate to {EMAIL_REPLACEMENT}"
+
+
+def test_sanitize_provider_text_keeps_email_placeholder_non_detectable() -> None:
+    # Arrange
+    raw_text = "Contact [EMAIL]"
+
+    # Act
+    sanitized = sanitize_provider_text(raw_text)
+
+    # Assert
+    assert sanitized == raw_text
+    assert detect_pii(sanitized) == ()
