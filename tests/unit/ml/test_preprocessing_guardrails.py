@@ -239,3 +239,57 @@ def test_sanitize_text_does_not_overmask_at_sign_or_incomplete_domain() -> None:
     # Assert
     assert result.text == text
     assert result.removed_categories == ()
+
+
+@pytest.mark.parametrize(
+    "synthetic_email",
+    [
+        "qa.person@example.test",
+        "USER+ALERT@HELPDESK.EXAMPLE.COM",
+        "qa.o'neil/team_test-alpha@example.engineering",
+        "fullwidth@example.test",
+    ],
+)
+def test_detected_synthetic_email_is_not_detected_after_sanitize_text(synthetic_email: str) -> None:
+    # Arrange
+    text = f"Synthetic contact {synthetic_email}"
+
+    # Act
+    detected_before = detect_pii(text)
+    sanitized = sanitize_text(text)
+    detected_after = detect_pii(sanitized.text)
+
+    # Assert
+    assert any(match.category == "email" for match in detected_before)
+    assert sanitized.text == "Synthetic contact [EMAIL]"
+    assert sanitized.removed_categories == ("email",)
+    assert detected_after == ()
+
+
+def test_non_email_synthetic_text_remains_non_detected_after_sanitize_text() -> None:
+    # Arrange
+    text = "Synthetic contact uses textual separator qa person at example test"
+
+    # Act
+    detected_before = detect_pii(text)
+    sanitized = sanitize_text(text)
+    detected_after = detect_pii(sanitized.text)
+
+    # Assert
+    assert detected_before == ()
+    assert sanitized.text == text
+    assert sanitized.removed_categories == ()
+    assert detected_after == ()
+
+
+def test_sanitize_text_accepts_email_placeholder_without_redetection() -> None:
+    # Arrange
+    text = "Synthetic contact [EMAIL]"
+
+    # Act
+    sanitized = sanitize_text(text)
+
+    # Assert
+    assert sanitized.text == text
+    assert sanitized.removed_categories == ()
+    assert detect_pii(sanitized.text) == ()

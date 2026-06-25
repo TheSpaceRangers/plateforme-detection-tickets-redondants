@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Pattern
 
@@ -22,7 +24,6 @@ class PiiMatch:
     category: str
     start: int
     end: int
-
 
 
 @dataclass(frozen=True)
@@ -63,9 +64,11 @@ def detect_pii(text: str) -> tuple[PiiMatch, ...]:
     """Detect supported PII categories without returning sensitive values."""
 
     matches: list[PiiMatch] = []
+    normalized_text = normalize_text_for_pii(text)
     for category, pattern in PII_PATTERNS.items():
         matches.extend(
-            PiiMatch(category=category, start=match.start(), end=match.end()) for match in pattern.finditer(text)
+            PiiMatch(category=category, start=match.start(), end=match.end())
+            for match in pattern.finditer(normalized_text)
         )
     return tuple(sorted(matches, key=lambda item: (item.start, item.end, item.category)))
 
@@ -73,13 +76,51 @@ def detect_pii(text: str) -> tuple[PiiMatch, ...]:
 def sanitize_text(text: str) -> PiiSanitizationResult:
     """Replace frequent PII in a ticket text field with typed placeholders."""
 
-    sanitized = text
+    sanitized = normalize_text_for_pii(text)
+    return _sanitize_with_detector_matches(sanitized)
+
+
+def normalize_text_for_pii(text: str) -> str:
+    """Normalize text before PII detection and sanitization."""
+
+    return unicodedata.normalize("NFKC", html.unescape(text))
+
+
+def _sanitize_with_detector_matches(text: str) -> PiiSanitizationResult:
+    """Apply replacements from detector offsets to keep both flows aligned."""
+
+    matches = detect_pii(text)
+    if not matches:
+        return PiiSanitizationResult(text=text, removed_categories=())
+
+    sanitized = _replace_non_overlapping_matches(text, matches)
+    return PiiSanitizationResult(text=sanitized, removed_categories=_categories_in_order(matches))
+
+
+def _replace_non_overlapping_matches(text: str, matches: tuple[PiiMatch, ...]) -> str:
+    """Replace detector matches while avoiding duplicate overlap edits."""
+
+    chunks: list[str] = []
+    cursor = 0
+    for match in matches:
+        if match.start < cursor:
+            continue
+        chunks.append(text[cursor : match.start])
+        chunks.append(PII_REPLACEMENTS[match.category])
+        cursor = match.end
+    chunks.append(text[cursor:])
+    return "".join(chunks)
+
+
+def _categories_in_order(matches: tuple[PiiMatch, ...]) -> tuple[str, ...]:
+    """Return unique matched categories without exposing matched values."""
+
     removed_categories: list[str] = []
-    for category, pattern in PII_PATTERNS.items():
-        sanitized, replacement_count = pattern.subn(PII_REPLACEMENTS[category], sanitized)
-        if replacement_count:
+    for match in matches:
+        category = match.category
+        if category not in removed_categories:
             removed_categories.append(category)
-    return PiiSanitizationResult(text=sanitized, removed_categories=tuple(removed_categories))
+    return tuple(removed_categories)
 
 
 def sanitize_ticket_text_fields(ticket: Mapping[str, object]) -> dict[str, object]:
