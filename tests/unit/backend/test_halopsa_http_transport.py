@@ -402,7 +402,11 @@ def test_http_mocked_response_missing_required_ticket_field_blocks_before_reposi
 
     responses = [
         _JsonResponse('{"access_token":"synthetic-access-token-never-log"}'),
-        _JsonResponse('{"tickets":[{"id":"halo-http-syn-001","summary":" "}]}'),
+        _JsonResponse(
+            '{"tickets":[{"summary":"SYNTHETIC-SENSITIVE-MARKER-MUST-NOT-LEAK",'
+            '"details":"SYNTHETIC-SENSITIVE-MARKER-MUST-NOT-LEAK",'
+            '"description":"SYNTHETIC-SENSITIVE-MARKER-MUST-NOT-LEAK"}]}'
+        ),
     ]
     monkeypatch.setattr(transport_module, "urlopen", lambda request, timeout: responses.pop(0))
     client = HaloPsaTicketClient(config=_valid_config(), transport=HaloPsaHttpTransport())
@@ -411,10 +415,16 @@ def test_http_mocked_response_missing_required_ticket_field_blocks_before_reposi
     service = TicketIngestionService(extractor=extractor, repository=repository)
 
     # Act
-    with pytest.raises(ValueError, match="summary"):
+    with pytest.raises(ValueError) as exc_info:
         service.ingest_tickets()
 
     # Assert
+    message = str(exc_info.value)
+    assert "id" in message
+    assert "SYNTHETIC-SENSITIVE-MARKER-MUST-NOT-LEAK" not in message
+    assert "summary" not in message
+    assert "details" not in message
+    assert "description" not in message
     assert repository.saved_batches == []
 
 

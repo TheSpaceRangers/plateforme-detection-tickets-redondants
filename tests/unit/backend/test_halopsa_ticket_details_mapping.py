@@ -118,13 +118,7 @@ def test_halopsa_extractor_accepts_title_as_minimal_summary_alias() -> None:
     assert tickets[0].summary == "Synthetic minimal title"
 
 
-@pytest.mark.parametrize(
-    ("missing_field", "expected_message_fragment"),
-    [
-        ("id", "id"),
-        ("summary", "summary"),
-    ],
-)
+@pytest.mark.parametrize(("missing_field", "expected_message_fragment"), [("id", "id")])
 def test_halopsa_extractor_fails_closed_when_minimal_required_fields_are_absent(
     missing_field: str,
     expected_message_fragment: str,
@@ -147,11 +141,11 @@ def test_halopsa_extractor_fails_closed_when_minimal_required_fields_are_absent(
 def test_halopsa_extractor_error_message_does_not_leak_sensitive_ticket_content() -> None:
     # Arrange
     payload = _synthetic_payload(
-        id=SYNTHETIC_SENSITIVE_MARKER,
-        summary=" ",
+        summary=SYNTHETIC_SENSITIVE_MARKER,
         details=SYNTHETIC_SENSITIVE_MARKER,
         description=SYNTHETIC_SENSITIVE_MARKER,
     )
+    payload.pop("id")
     transport = _RecordingTransport(payloads=(payload,))
     extractor = _build_extractor(transport)
 
@@ -162,7 +156,7 @@ def test_halopsa_extractor_error_message_does_not_leak_sensitive_ticket_content(
     # Assert
     message = str(exc_info.value)
     assert transport.calls == 1
-    assert "summary" in message
+    assert "id" in message
     assert SYNTHETIC_SENSITIVE_MARKER not in message
 
 

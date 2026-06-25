@@ -86,10 +86,10 @@ def test_halopsa_extractor_uses_unknown_when_status_is_absent() -> None:
 def test_halopsa_extractor_error_message_does_not_leak_sensitive_payload_content() -> None:
     # Arrange
     payload = _synthetic_payload(
-        id=SYNTHETIC_SECRET_MARKER,
-        summary=" ",
+        summary=SYNTHETIC_SECRET_MARKER,
         details=SYNTHETIC_SECRET_MARKER,
     )
+    payload.pop("id")
     transport = _RecordingTransport(payloads=(payload,))
     extractor = _build_extractor(transport)
 
@@ -100,7 +100,7 @@ def test_halopsa_extractor_error_message_does_not_leak_sensitive_payload_content
     # Assert
     message = str(exc_info.value)
     assert transport.calls == 1
-    assert "summary" in message
+    assert "id" in message
     assert SYNTHETIC_SECRET_MARKER not in message
 
 
