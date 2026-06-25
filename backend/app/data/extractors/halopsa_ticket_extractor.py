@@ -9,6 +9,8 @@ from backend.app.data.sanitizers import sanitize_provider_text
 from backend.app.schemas.tickets import IncomingTicket
 
 UNKNOWN_STATUS = "unknown"
+UNTITLED_SUMMARY = "Untitled ticket"
+SUMMARY_FIELD_ALIASES = ("summary", "title", "subject")
 STATUS_FIELD_ALIASES = ("status", "status_id", "statusid", "ticketstatus")
 STATUS_OBJECT_ALIASES = ("name", "id")
 DETAIL_FIELD_ALIASES = (
@@ -43,13 +45,22 @@ def _to_incoming_ticket(payload: Mapping[str, object]) -> IncomingTicket:
 
     return IncomingTicket(
         external_ticket_id=_required_text(payload, ("id", "ticket_id", "external_ticket_id")),
-        summary=_required_text(payload, ("summary", "title")),
+        summary=_summary_text(payload),
         details=_details_text(payload),
         status=_status_text(payload),
         priority=_optional_text(payload, ("priority",)),
         category=_optional_text(payload, ("category", "ticket_type")),
         agent_id=_optional_identifier(payload, ("agent_id", "agentId", "assigned_agent_id")),
     )
+
+
+def _summary_text(payload: Mapping[str, object]) -> str:
+    """Return a sanitized ticket summary or a synthetic non-PII fallback."""
+
+    value = _first_non_blank_text(payload, SUMMARY_FIELD_ALIASES)
+    if value is None:
+        return sanitize_provider_text(UNTITLED_SUMMARY)
+    return value
 
 
 def _required_text(payload: Mapping[str, object], field_names: tuple[str, ...]) -> str:

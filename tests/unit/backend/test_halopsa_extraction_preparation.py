@@ -119,12 +119,14 @@ def test_halopsa_extractor_maps_synthetic_allowlisted_payload_to_incoming_ticket
 
 def test_halopsa_extractor_rejects_payload_missing_required_allowlisted_field() -> None:
     # Arrange
-    transport = _RecordingTransport(payloads=(_synthetic_payload(summary=" "),))
+    payload = _synthetic_payload()
+    payload.pop("id")
+    transport = _RecordingTransport(payloads=(payload,))
     client = HaloPsaTicketClient(config=_valid_config(), transport=transport)
     extractor = HaloPsaTicketExtractor(client=client)
 
     # Act
-    with pytest.raises(InvalidHaloPsaTicketPayloadError, match="summary"):
+    with pytest.raises(InvalidHaloPsaTicketPayloadError, match="id"):
         tuple(extractor.extract())
 
     # Assert
