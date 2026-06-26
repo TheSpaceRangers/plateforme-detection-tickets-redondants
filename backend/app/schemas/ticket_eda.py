@@ -16,6 +16,9 @@ class DistributionMetric(BaseModel):
     """Distinct count and anonymous distribution for one controlled dimension."""
 
     distinct_count: int = Field(ge=0)
+    non_null_distinct_count: int = Field(ge=0)
+    null_count: int = Field(ge=0)
+    missing_count: int = Field(ge=0)
     buckets: list[DistributionBucket]
 
 
@@ -46,6 +49,13 @@ class PlaceholderMetric(BaseModel):
     rate: float = Field(ge=0, le=1)
 
 
+class PiiCategoryResidualMetric(BaseModel):
+    """Aggregate official residual PII count for one detector category."""
+
+    category: str
+    rows_with_residual: int = Field(ge=0)
+
+
 class TemporalBucket(BaseModel):
     """Aggregate ticket count for a time period."""
 
@@ -61,11 +71,13 @@ class TemporalDistribution(BaseModel):
 
 
 class PiiScanMetric(BaseModel):
-    """Aggregate PII scan result without leaking matching text."""
+    """Aggregate official PII residual scan result without leaking text."""
 
     rows_scanned: int = Field(ge=0)
-    rows_with_pii_detected: int = Field(ge=0)
-    detection_rate: float = Field(ge=0, le=1)
+    pii_residual_official_count: int = Field(ge=0)
+    residual_detection_rate: float = Field(ge=0, le=1)
+    residual_categories: list[PiiCategoryResidualMetric]
+    heuristic_like_pattern_count: int | None = Field(default=None, ge=0)
 
 
 class FieldCompletenessMetric(BaseModel):
@@ -73,6 +85,8 @@ class FieldCompletenessMetric(BaseModel):
 
     field: str
     populated_count: int = Field(ge=0)
+    null_count: int = Field(ge=0)
+    missing_count: int = Field(ge=0)
     completeness_rate: float = Field(ge=0, le=1)
 
 
@@ -86,7 +100,7 @@ class AggregateTicketEdaReport(BaseModel):
     short_text: TextQualityMetric
     long_text: TextQualityMetric
     fallback_untitled_ticket_rate: float = Field(ge=0, le=1)
-    placeholders: list[PlaceholderMetric]
+    placeholder_counts: list[PlaceholderMetric]
     temporal_distribution: TemporalDistribution
     pii_scan: PiiScanMetric
     completeness: list[FieldCompletenessMetric]
