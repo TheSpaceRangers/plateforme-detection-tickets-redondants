@@ -63,10 +63,20 @@ class PostgresTicketRepository:
                 status,
                 priority,
                 category,
-                agent_id_pseudonym
+                agent_id_pseudonym,
+                ticket_created_at,
+                ticket_updated_at,
+                ticket_closed_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (external_ticket_id) DO NOTHING
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (external_ticket_id) DO UPDATE SET
+                priority = EXCLUDED.priority,
+                category = EXCLUDED.category,
+                agent_id_pseudonym = EXCLUDED.agent_id_pseudonym,
+                ticket_created_at = COALESCE(EXCLUDED.ticket_created_at, clean_tickets.ticket_created_at),
+                ticket_updated_at = COALESCE(EXCLUDED.ticket_updated_at, clean_tickets.ticket_updated_at),
+                ticket_closed_at = COALESCE(EXCLUDED.ticket_closed_at, clean_tickets.ticket_closed_at)
+            RETURNING (xmax = 0) AS inserted
         """
         values = [
             (
@@ -77,6 +87,9 @@ class PostgresTicketRepository:
                 ticket.priority,
                 ticket.category,
                 ticket.agent_id_pseudonym,
+                ticket.ticket_created_at,
+                ticket.ticket_updated_at,
+                ticket.ticket_closed_at,
             )
             for ticket in tickets
         ]
@@ -88,7 +101,8 @@ class PostgresTicketRepository:
                 stored_count = 0
                 for value in values:
                     cursor.execute(insert_statement, value)
-                    stored_count += cursor.rowcount
+                    row = cursor.fetchone()
+                    stored_count += 1 if row and row[0] else 0
         return stored_count
 
     def _ensure_schema(self, cursor: Any) -> None:
@@ -97,6 +111,8 @@ class PostgresTicketRepository:
         if not self._initialize_schema or self._schema_initialized:
             return
         cursor.execute(_schema_sql())
+        for migration_sql in _migration_sql_statements():
+            cursor.execute(migration_sql)
         self._schema_initialized = True
 
 
@@ -105,6 +121,15 @@ def _schema_sql() -> str:
 
     schema_path = Path(__file__).resolve().parents[1] / "schema.sql"
     return schema_path.read_text(encoding="utf-8")
+
+
+def _migration_sql_statements() -> tuple[str, ...]:
+    """Load idempotent clean ticket schema migrations in filename order."""
+
+    migrations_path = Path(__file__).resolve().parents[1] / "migrations"
+    if not migrations_path.exists():
+        return ()
+    return tuple(path.read_text(encoding="utf-8") for path in sorted(migrations_path.glob("*.sql")))
 
 
 def _assert_clean_ticket_sequence(tickets: Sequence[StoredCleanTicket]) -> None:

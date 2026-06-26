@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import fields
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -22,6 +23,9 @@ ALLOWED_CLEAN_COLUMNS = (
     "priority",
     "category",
     "agent_id_pseudonym",
+    "ticket_created_at",
+    "ticket_updated_at",
+    "ticket_closed_at",
 )
 FORBIDDEN_RAW_COLUMNS = ("agent_id", "raw_json", "raw_payload", "payload", "halopsa_payload")
 
@@ -104,14 +108,20 @@ def test_postgres_connection_config_rejects_invalid_port_without_raw_value_leak(
 
 def test_postgres_repository_inserts_only_allowlisted_clean_ticket_columns() -> None:
     # Arrange
+    created_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    updated_at = datetime(2026, 1, 3, 3, 4, 5, tzinfo=timezone.utc)
+    closed_at = datetime(2026, 1, 4, 3, 4, 5, tzinfo=timezone.utc)
     ticket = StoredCleanTicket(
-        external_ticket_id="syn-postgres-001",
-        summary="Synthetic clean summary",
-        details="Synthetic clean details",
+        external_ticket_id="syn-001",
+        summary="Synthetic summary",
+        details="Synthetic details",
         status="open",
         priority="medium",
         category="identity_access",
         agent_id_pseudonym="hmac_sha256:syntheticdigest",
+        ticket_created_at=created_at,
+        ticket_updated_at=updated_at,
+        ticket_closed_at=closed_at,
     )
     cursor = _RecordingCursor()
     repository = PostgresTicketRepository(connection_factory=lambda: _RecordingConnection(cursor))
@@ -125,13 +135,16 @@ def test_postgres_repository_inserts_only_allowlisted_clean_ticket_columns() -> 
     assert not any(raw_column in _inserted_columns(cursor.statement) for raw_column in FORBIDDEN_RAW_COLUMNS)
     assert cursor.values == [
         (
-            "syn-postgres-001",
-            "Synthetic clean summary",
-            "Synthetic clean details",
+            "syn-001",
+            "Synthetic summary",
+            "Synthetic details",
             "open",
             "medium",
             "identity_access",
             "hmac_sha256:syntheticdigest",
+            created_at,
+            updated_at,
+            closed_at,
         )
     ]
     assert tuple(field.name for field in fields(ticket)) == ALLOWED_CLEAN_COLUMNS
@@ -157,7 +170,8 @@ def test_postgres_repository_ignores_duplicate_external_ticket_id_without_unique
     # Assert
     assert stored_count == 1
     assert len(cursor.values) == 2
-    assert "ON CONFLICT (external_ticket_id) DO NOTHING" in cursor.statement
+    assert "ON CONFLICT (external_ticket_id) DO UPDATE SET" in cursor.statement
+    assert "ticket_created_at = COALESCE(EXCLUDED.ticket_created_at, clean_tickets.ticket_created_at)" in cursor.statement
 
 
 def test_postgres_repository_propagates_non_duplicate_database_errors() -> None:
@@ -212,6 +226,18 @@ def test_schema_sql_contains_clean_allowlist_without_raw_payload_columns() -> No
         assert re.search(rf"\b{raw_column}\b", schema_sql) is None
 
 
+def test_business_dates_migration_is_idempotent_and_nullable() -> None:
+    # Arrange
+    migration_path = "backend/app/db/migrations/001_add_ticket_business_dates.sql"
+
+    # Act
+    migration_sql = open(migration_path, encoding="utf-8").read()
+
+    # Assert
+    for column in ("ticket_created_at", "ticket_updated_at", "ticket_closed_at"):
+        assert re.search(rf"ADD COLUMN IF NOT EXISTS {column} TIMESTAMPTZ NULL", migration_sql) is not None
+
+
 class _FailingConnectionFactory:
     def __init__(self) -> None:
         self.called = False
@@ -249,6 +275,11 @@ class _RecordingCursor:
         self.values.append(value)
         index = len(self.values) - 1
         self.rowcount = self._rowcounts[index] if index < len(self._rowcounts) else self._rowcounts[-1]
+
+    def fetchone(self) -> tuple[bool]:
+        index = len(self.values) - 1
+        inserted = self._rowcounts[index] if index < len(self._rowcounts) else self._rowcounts[-1]
+        return (bool(inserted),)
 
 
 class _RecordingConnection:

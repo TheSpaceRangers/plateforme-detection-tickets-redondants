@@ -20,6 +20,8 @@ from backend.app.schemas.ticket_eda import (
     PlaceholderMetric,
     TemporalBucket,
     TemporalDistribution,
+    TemporalFieldMetric,
+    TicketCreatedTemporalBuckets,
     TextLengthMetric,
     TextQualityMetric,
 )
@@ -72,8 +74,14 @@ def safe_report() -> AggregateTicketEdaReport:
         fallback_untitled_ticket_rate=0.25,
         placeholder_counts=[PlaceholderMetric(placeholder="[EMAIL]", rows_with_placeholder=1, rate=0.25)],
         temporal_distribution=TemporalDistribution(
-            by_day=[TemporalBucket(period="2026-06-01", count=4)],
-            by_week=[TemporalBucket(period="2026-23", count=4)],
+            ticket_created_at=TemporalFieldMetric(min_at="2026-01-01T00:00:00Z", max_at="2026-02-01T00:00:00Z", populated_count=4, null_count=0, missing_count=0),
+            ticket_updated_at=TemporalFieldMetric(min_at=None, max_at=None, populated_count=0, null_count=4, missing_count=4),
+            ticket_closed_at=TemporalFieldMetric(min_at=None, max_at=None, populated_count=0, null_count=4, missing_count=4),
+            ingested_at=TemporalFieldMetric(min_at="2026-06-01T00:00:00Z", max_at="2026-06-02T00:00:00Z", populated_count=4, null_count=0, missing_count=0),
+            ticket_created_buckets=TicketCreatedTemporalBuckets(
+                by_month=[TemporalBucket(period="2026-01", count=4)],
+                by_year=[TemporalBucket(period="2026", count=4)],
+            ),
         ),
         pii_scan=PiiScanMetric(
             rows_scanned=4,
@@ -156,14 +164,18 @@ class FakeCursor:
             (0,),
             (3,),
             (1,),
+            ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", 6, 1),
+            ("2026-01-02T00:00:00Z", "2026-02-02T00:00:00Z", 5, 2),
+            (None, None, 0, 7),
+            ("2026-06-01T00:00:00Z", "2026-06-02T00:00:00Z", 7, 0),
             (2,),
             (7,),
-            (5, 1, 1, 6, 1, 0, 4, 2, 1, 7, 0, 0),
+            (5, 1, 1, 6, 1, 0, 4, 2, 1, 7, 0, 6, 1, 0, 7, 7, 0, 0),
         ]
         self._fetchall_queue: list[list[tuple[Any, ...]]] = [
             [(1, 4), (2, 3)],
-            [("2026-06-01", 4), ("2026-06-02", 3)],
-            [("2026-23", 7)],
+            [("2026-01", 4), ("2026-02", 3)],
+            [("2026", 7)],
         ]
 
     def __enter__(self) -> "FakeCursor":
@@ -212,7 +224,10 @@ def test_repository_uses_read_only_aggregate_sql_with_fake_cursor() -> None:
     assert repository.get_text_quality("summary").length.max == 42
     assert repository.get_fallback_untitled_ticket_rate() == 0.2
     assert len(repository.get_placeholder_metrics()) == 5
-    assert repository.get_temporal_distribution().by_week[0].count == 7
+    temporal_distribution = repository.get_temporal_distribution()
+    assert temporal_distribution.ticket_created_at.populated_count == 6
+    assert temporal_distribution.ingested_at.populated_count == 7
+    assert temporal_distribution.ticket_created_buckets.by_year[0].count == 7
     assert repository.get_heuristic_like_pattern_count() == 2
     assert repository.get_completeness()[0].field == "status"
 
@@ -234,6 +249,40 @@ def test_repository_rejects_forbidden_distribution_column() -> None:
     # Act / Assert
     with pytest.raises(ValueError, match="not approved"):
         repository.get_distribution("external_ticket_id")
+
+
+def test_repository_temporal_distribution_uses_business_dates_separately_from_ingestion_time() -> None:
+    # Arrange
+    cursor = FakeCursor()
+    cursor._fetchone_queue = [
+        ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", 6, 1),
+        ("2026-01-02T00:00:00Z", "2026-02-02T00:00:00Z", 5, 2),
+        (None, None, 0, 7),
+        ("2026-06-01T00:00:00Z", "2026-06-02T00:00:00Z", 7, 0),
+    ]
+    cursor._fetchall_queue = [[("2026-01", 4), ("2026-02", 3)], [("2026", 7)]]
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(cursor))
+
+    # Act
+    temporal_distribution = repository.get_temporal_distribution()
+
+    # Assert
+    assert temporal_distribution.ticket_created_at.min_at == "2026-01-01T00:00:00Z"
+    assert temporal_distribution.ingested_at.min_at == "2026-06-01T00:00:00Z"
+    assert temporal_distribution.ticket_created_buckets.by_month[0].period == "2026-01"
+    statements = [sql.lower() for sql, _params in cursor.statements]
+    assert any("min(ticket_created_at)" in sql and "max(ticket_created_at)" in sql for sql in statements)
+    assert any("min(ingested_at)" in sql and "max(ingested_at)" in sql for sql in statements)
+    assert any("date_trunc(%s, ticket_created_at)" in sql for sql in statements)
+
+
+def test_repository_rejects_unsupported_ticket_created_bucket_granularity() -> None:
+    # Arrange
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(FakeCursor()))
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="Unsupported"):
+        repository.get_ticket_created_buckets("day")
 
 
 class SyntheticRepository:
@@ -289,8 +338,14 @@ class SyntheticRepository:
 
     def get_temporal_distribution(self) -> TemporalDistribution:
         return TemporalDistribution(
-            by_day=[TemporalBucket(period="2026-06-01", count=1), TemporalBucket(period="2026-06-02", count=3)],
-            by_week=[TemporalBucket(period="2026-23", count=4)],
+            ticket_created_at=TemporalFieldMetric(min_at="2026-01-01T00:00:00Z", max_at="2026-02-01T00:00:00Z", populated_count=3, null_count=1, missing_count=1),
+            ticket_updated_at=TemporalFieldMetric(min_at=None, max_at=None, populated_count=0, null_count=4, missing_count=4),
+            ticket_closed_at=TemporalFieldMetric(min_at=None, max_at=None, populated_count=0, null_count=4, missing_count=4),
+            ingested_at=TemporalFieldMetric(min_at="2026-06-01T00:00:00Z", max_at="2026-06-02T00:00:00Z", populated_count=4, null_count=0, missing_count=0),
+            ticket_created_buckets=TicketCreatedTemporalBuckets(
+                by_month=[TemporalBucket(period="2026-01", count=1), TemporalBucket(period="2026-02", count=3)],
+                by_year=[TemporalBucket(period="2026", count=4)],
+            ),
         )
 
     def get_heuristic_like_pattern_count(self) -> int:
@@ -304,7 +359,10 @@ class SyntheticRepository:
             FieldCompletenessMetric(field="status", populated_count=4, null_count=0, missing_count=0, completeness_rate=1.0),
             FieldCompletenessMetric(field="priority", populated_count=2, null_count=1, missing_count=1, completeness_rate=0.5),
             FieldCompletenessMetric(field="category", populated_count=3, null_count=1, missing_count=0, completeness_rate=0.75),
-            FieldCompletenessMetric(field="ingestion_time", populated_count=4, null_count=0, missing_count=0, completeness_rate=1.0),
+            FieldCompletenessMetric(field="ticket_created_at", populated_count=3, null_count=1, missing_count=1, completeness_rate=0.75),
+            FieldCompletenessMetric(field="ticket_updated_at", populated_count=0, null_count=4, missing_count=4, completeness_rate=0.0),
+            FieldCompletenessMetric(field="ticket_closed_at", populated_count=0, null_count=4, missing_count=4, completeness_rate=0.0),
+            FieldCompletenessMetric(field="ingested_at", populated_count=4, null_count=0, missing_count=0, completeness_rate=1.0),
         ]
 
 
@@ -329,7 +387,8 @@ def test_service_calculates_synthetic_aggregate_metrics_from_repository_mock(mon
     assert report.long_text.length.p99 == 40
     assert report.fallback_untitled_ticket_rate == 0.25
     assert report.placeholder_counts[0].rate == 0.5
-    assert report.temporal_distribution.by_day[1].period == "2026-06-02"
+    assert report.temporal_distribution.ticket_created_buckets.by_month[1].period == "2026-02"
+    assert report.temporal_distribution.ingested_at.populated_count == 4
     assert report.pii_scan.pii_residual_official_count == 1
     assert report.pii_scan.residual_detection_rate == 0.25
     assert report.pii_scan.heuristic_like_pattern_count == 2

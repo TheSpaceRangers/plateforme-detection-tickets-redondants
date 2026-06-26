@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient
+from backend.app.data.mappers.halopsa_dates import map_halopsa_business_dates
 from backend.app.data.sanitizers import sanitize_provider_text
 from backend.app.schemas.tickets import IncomingTicket
 
@@ -43,6 +44,7 @@ class HaloPsaTicketExtractor:
 def _to_incoming_ticket(payload: Mapping[str, object]) -> IncomingTicket:
     """Map a transient provider payload to the canonical pre-guardrail ticket shape."""
 
+    business_dates = map_halopsa_business_dates(payload)
     return IncomingTicket(
         external_ticket_id=_required_text(payload, ("id", "ticket_id", "external_ticket_id")),
         summary=_summary_text(payload),
@@ -51,6 +53,9 @@ def _to_incoming_ticket(payload: Mapping[str, object]) -> IncomingTicket:
         priority=_optional_text(payload, ("priority",)),
         category=_optional_text(payload, ("category", "ticket_type")),
         agent_id=_optional_identifier(payload, ("agent_id", "agentId", "assigned_agent_id")),
+        ticket_created_at=business_dates["ticket_created_at"],
+        ticket_updated_at=business_dates["ticket_updated_at"],
+        ticket_closed_at=business_dates["ticket_closed_at"],
     )
 
 

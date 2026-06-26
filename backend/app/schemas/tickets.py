@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +17,9 @@ class IncomingTicket:
     priority: str | None = None
     category: str | None = None
     agent_id: str | None = None
+    ticket_created_at: datetime | None = None
+    ticket_updated_at: datetime | None = None
+    ticket_closed_at: datetime | None = None
 
     def to_guardrail_mapping(self) -> dict[str, object]:
         """Return only fields expected by existing ML privacy guardrails."""
@@ -27,6 +31,9 @@ class IncomingTicket:
             "status": self.status,
             "priority": self.priority,
             "category": self.category,
+            "ticket_created_at": self.ticket_created_at,
+            "ticket_updated_at": self.ticket_updated_at,
+            "ticket_closed_at": self.ticket_closed_at,
         }
         if self.agent_id is not None:
             mapping["agent_id"] = self.agent_id
@@ -47,6 +54,9 @@ class StoredCleanTicket:
     priority: str | None = None
     category: str | None = None
     agent_id_pseudonym: str | None = None
+    ticket_created_at: datetime | None = None
+    ticket_updated_at: datetime | None = None
+    ticket_closed_at: datetime | None = None
 
     @classmethod
     def from_guarded_mapping(cls, record: dict[str, object]) -> "StoredCleanTicket":
@@ -67,7 +77,20 @@ class StoredCleanTicket:
             agent_id_pseudonym=str(record["agent_id_pseudonym"])
             if record.get("agent_id_pseudonym") is not None
             else None,
+            ticket_created_at=_optional_datetime(record.get("ticket_created_at")),
+            ticket_updated_at=_optional_datetime(record.get("ticket_updated_at")),
+            ticket_closed_at=_optional_datetime(record.get("ticket_closed_at")),
         )
+
+
+def _optional_datetime(value: object) -> datetime | None:
+    """Return datetime values propagated by provider mappers; reject unsafe coercion."""
+
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    raise ValueError("Business date fields must be datetime instances or None")
 
 
 @dataclass(frozen=True, slots=True)
