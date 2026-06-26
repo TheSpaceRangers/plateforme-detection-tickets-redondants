@@ -70,6 +70,27 @@ class PostgresConnectionConfig:
             "password": self.password,
         }
 
+    @classmethod
+    def read_from_env(cls, env: Mapping[str, str]) -> "PostgresConnectionConfig":
+        """Build read-only connection settings without requiring write activation."""
+
+        dsn = env.get(POSTGRES_DSN_KEY, "").strip()
+        if dsn:
+            return cls(dsn=dsn)
+
+        missing_keys = tuple(key for key in POSTGRES_COMPONENT_KEYS if not env.get(key, "").strip())
+        if missing_keys:
+            raise PostgresConfigurationError(
+                f"Incomplete PostgreSQL ticket repository configuration: {', '.join(missing_keys)}"
+            )
+        return cls(
+            host=env["POSTGRES_HOST"].strip(),
+            port=_parse_postgres_port(env["POSTGRES_PORT"]),
+            dbname=env["POSTGRES_DB"].strip(),
+            user=env["POSTGRES_USER"].strip(),
+            password=env["POSTGRES_PASSWORD"],
+        )
+
 
 def is_postgres_write_enabled(env: Mapping[str, str]) -> bool:
     """Return whether runtime explicitly opted in to PostgreSQL writes."""
