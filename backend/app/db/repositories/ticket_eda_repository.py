@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from backend.app.schemas.ticket_eda import (
@@ -10,7 +10,6 @@ from backend.app.schemas.ticket_eda import (
     DistributionMetric,
     FieldCompletenessMetric,
     PlaceholderMetric,
-    PiiScanMetric,
     TemporalBucket,
     TemporalDistribution,
     TextLengthMetric,
@@ -22,7 +21,8 @@ INTERNAL_AGGREGATE_TEXT_COLUMNS: frozenset[str] = frozenset(("summary", "details
 DENIED_EXPOSURE_COLUMNS: frozenset[str] = frozenset(
     ("summary", "details", "external_ticket_id", "agent_id_pseudonym", "payload")
 )
-KNOWN_PLACEHOLDERS: tuple[str, ...] = ("[EMAIL]", "[PHONE]", "[URL]", "[IP]", "[NAME]")
+KNOWN_PLACEHOLDERS: tuple[str, ...] = ("[EMAIL]", "[PHONE]", "[URL]", "[IP]", "[IDENTIFIER]")
+TEXT_SCAN_BATCH_SIZE = 500
 
 
 class AggregateTicketEdaRepository:
@@ -55,25 +55,40 @@ class AggregateTicketEdaRepository:
 
         if column not in ALLOWED_AGGREGATE_COLUMNS - {"ingested_at"}:
             raise ValueError("Column is not approved for aggregate distribution")
+        expression = f"NULLIF(BTRIM({column}), '')"
         sql = f"""
             SELECT ranked.bucket_rank, ranked.ticket_count
             FROM (
                 SELECT
-                    ROW_NUMBER() OVER (ORDER BY COUNT(id) DESC, {column} ASC) AS bucket_rank,
+                    ROW_NUMBER() OVER (ORDER BY COUNT(id) DESC, {expression} ASC) AS bucket_rank,
                     COUNT(id) AS ticket_count
                 FROM clean_tickets
-                GROUP BY {column}
+                WHERE {expression} IS NOT NULL
+                GROUP BY {expression}
             ) AS ranked
             ORDER BY ranked.bucket_rank ASC
         """
-        distinct_sql = f"SELECT COUNT(DISTINCT {column}) FROM clean_tickets"
+        counts_sql = f"""
+            SELECT
+                COUNT(DISTINCT {expression}) AS non_null_distinct_count,
+                COUNT(id) FILTER (WHERE {column} IS NULL) AS null_count,
+                COUNT(id) FILTER (WHERE {column} IS NOT NULL AND BTRIM({column}) = '') AS missing_count
+            FROM clean_tickets
+        """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(distinct_sql)
-                distinct_count = int(cursor.fetchone()[0])
+                cursor.execute(counts_sql)
+                counts = cursor.fetchone()
                 cursor.execute(sql)
                 buckets = [DistributionBucket(rank=int(row[0]), count=int(row[1])) for row in cursor.fetchall()]
-        return DistributionMetric(distinct_count=distinct_count, buckets=buckets)
+        non_null_distinct_count = int(counts[0])
+        return DistributionMetric(
+            distinct_count=non_null_distinct_count,
+            non_null_distinct_count=non_null_distinct_count,
+            null_count=int(counts[1]),
+            missing_count=int(counts[2]),
+            buckets=buckets,
+        )
 
     def get_text_quality(self, column: str) -> TextQualityMetric:
         """Return aggregate text quality metrics for an internal text column."""
@@ -170,33 +185,47 @@ class AggregateTicketEdaRepository:
                 by_week = [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
         return TemporalDistribution(by_day=by_day, by_week=by_week)
 
-    def get_pii_scan(self) -> PiiScanMetric:
-        """Return aggregate PII detection counts without exposing matches."""
+    def get_heuristic_like_pattern_count(self) -> int:
+        """Return legacy SQL heuristic-like pattern count for diagnostics only."""
 
         email_pattern = r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"
         phone_pattern = r"(\+?[0-9][0-9 .()/-]{7,}[0-9])"
         ip_pattern = r"\m(?:[0-9]{1,3}\.){3}[0-9]{1,3}\M"
         sql = """
-            SELECT
-                COUNT(id) AS rows_scanned,
-                COUNT(id) FILTER (
-                    WHERE summary ~* %s OR details ~* %s
-                       OR summary ~* %s OR details ~* %s
-                       OR summary ~* %s OR details ~* %s
-                ) AS rows_with_pii
+            SELECT COUNT(id) FILTER (
+                WHERE summary ~* %s OR details ~* %s
+                   OR summary ~* %s OR details ~* %s
+                   OR summary ~* %s OR details ~* %s
+            ) AS rows_with_heuristic_like_pattern
             FROM clean_tickets
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql, (email_pattern, email_pattern, phone_pattern, phone_pattern, ip_pattern, ip_pattern))
+                cursor.execute(
+                    sql,
+                    (email_pattern, email_pattern, phone_pattern, phone_pattern, ip_pattern, ip_pattern),
+                )
                 row = cursor.fetchone()
-        rows_scanned = int(row[0])
-        rows_with_pii = int(row[1])
-        return PiiScanMetric(
-            rows_scanned=rows_scanned,
-            rows_with_pii_detected=rows_with_pii,
-            detection_rate=_safe_rate(rows_with_pii, rows_scanned),
-        )
+        return int(row[0])
+
+    def iter_sanitized_text_pairs(self, batch_size: int = TEXT_SCAN_BATCH_SIZE) -> Iterator[tuple[str, str]]:
+        """Yield sanitized text fields for official in-memory aggregate scans only."""
+
+        if batch_size <= 0:
+            raise ValueError("Batch size must be positive")
+        sql = """
+            SELECT COALESCE(summary, ''), COALESCE(details, '')
+            FROM clean_tickets
+        """
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                while True:
+                    rows = cursor.fetchmany(batch_size)
+                    if not rows:
+                        break
+                    for row in rows:
+                        yield (str(row[0]), str(row[1]))
 
     def get_completeness(self) -> list[FieldCompletenessMetric]:
         """Return completeness metrics for output-safe fields only."""
@@ -205,19 +234,38 @@ class AggregateTicketEdaRepository:
         sql = """
             SELECT
                 COUNT(id) FILTER (WHERE status IS NOT NULL AND BTRIM(status) <> '') AS status_count,
+                COUNT(id) FILTER (WHERE status IS NULL) AS status_null_count,
+                COUNT(id) FILTER (WHERE status IS NOT NULL AND BTRIM(status) = '') AS status_missing_count,
                 COUNT(id) FILTER (WHERE priority IS NOT NULL AND BTRIM(priority) <> '') AS priority_count,
+                COUNT(id) FILTER (WHERE priority IS NULL) AS priority_null_count,
+                COUNT(id) FILTER (WHERE priority IS NOT NULL AND BTRIM(priority) = '') AS priority_missing_count,
                 COUNT(id) FILTER (WHERE category IS NOT NULL AND BTRIM(category) <> '') AS category_count,
-                COUNT(id) FILTER (WHERE ingested_at IS NOT NULL) AS time_count
+                COUNT(id) FILTER (WHERE category IS NULL) AS category_null_count,
+                COUNT(id) FILTER (WHERE category IS NOT NULL AND BTRIM(category) = '') AS category_missing_count,
+                COUNT(id) FILTER (WHERE ingested_at IS NOT NULL) AS time_count,
+                COUNT(id) FILTER (WHERE ingested_at IS NULL) AS time_null_count,
+                0 AS time_missing_count
             FROM clean_tickets
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(sql)
                 row = cursor.fetchone()
-        fields = (("status", row[0]), ("priority", row[1]), ("category", row[2]), ("ingestion_time", row[3]))
+        fields = (
+            ("status", row[0], row[1], row[2]),
+            ("priority", row[3], row[4], row[5]),
+            ("category", row[6], row[7], row[8]),
+            ("ingestion_time", row[9], row[10], row[11]),
+        )
         return [
-            FieldCompletenessMetric(field=field, populated_count=int(count), completeness_rate=_safe_rate(int(count), total))
-            for field, count in fields
+            FieldCompletenessMetric(
+                field=field,
+                populated_count=int(count),
+                null_count=int(null_count),
+                missing_count=int(missing_count),
+                completeness_rate=_safe_rate(int(count), total),
+            )
+            for field, count, null_count, missing_count in fields
         ]
 
 
