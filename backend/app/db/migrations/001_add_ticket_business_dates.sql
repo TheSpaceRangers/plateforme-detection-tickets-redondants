@@ -1,0 +1,4 @@
+ALTER TABLE clean_tickets
+    ADD COLUMN IF NOT EXISTS ticket_created_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS ticket_updated_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS ticket_closed_at TIMESTAMPTZ NULL;

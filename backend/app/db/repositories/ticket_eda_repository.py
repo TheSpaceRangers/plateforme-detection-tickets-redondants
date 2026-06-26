@@ -10,13 +10,18 @@ from backend.app.schemas.ticket_eda import (
     DistributionMetric,
     FieldCompletenessMetric,
     PlaceholderMetric,
+    TemporalFieldMetric,
     TemporalBucket,
     TemporalDistribution,
+    TicketCreatedTemporalBuckets,
     TextLengthMetric,
     TextQualityMetric,
 )
 
-ALLOWED_AGGREGATE_COLUMNS: frozenset[str] = frozenset(("status", "priority", "category", "ingested_at"))
+ALLOWED_AGGREGATE_COLUMNS: frozenset[str] = frozenset(("status", "priority", "category"))
+ALLOWED_TEMPORAL_COLUMNS: frozenset[str] = frozenset(
+    ("ticket_created_at", "ticket_updated_at", "ticket_closed_at", "ingested_at")
+)
 INTERNAL_AGGREGATE_TEXT_COLUMNS: frozenset[str] = frozenset(("summary", "details"))
 DENIED_EXPOSURE_COLUMNS: frozenset[str] = frozenset(
     ("summary", "details", "external_ticket_id", "agent_id_pseudonym", "payload")
@@ -53,7 +58,7 @@ class AggregateTicketEdaRepository:
     def get_distribution(self, column: str) -> DistributionMetric:
         """Return anonymous aggregate distribution for an allowlisted column."""
 
-        if column not in ALLOWED_AGGREGATE_COLUMNS - {"ingested_at"}:
+        if column not in ALLOWED_AGGREGATE_COLUMNS:
             raise ValueError("Column is not approved for aggregate distribution")
         expression = f"NULLIF(BTRIM({column}), '')"
         sql = f"""
@@ -163,27 +168,59 @@ class AggregateTicketEdaRepository:
         return metrics
 
     def get_temporal_distribution(self) -> TemporalDistribution:
-        """Return aggregate daily and weekly ingestion distributions."""
+        """Return aggregate temporal metrics without using ingestion as business proxy."""
 
-        day_sql = """
-            SELECT TO_CHAR(DATE_TRUNC('day', ingested_at), 'YYYY-MM-DD') AS period, COUNT(id)
+        return TemporalDistribution(
+            ticket_created_at=self.get_temporal_field_metric("ticket_created_at"),
+            ticket_updated_at=self.get_temporal_field_metric("ticket_updated_at"),
+            ticket_closed_at=self.get_temporal_field_metric("ticket_closed_at"),
+            ingested_at=self.get_temporal_field_metric("ingested_at"),
+            ticket_created_buckets=TicketCreatedTemporalBuckets(
+                by_month=self.get_ticket_created_buckets("month"),
+                by_year=self.get_ticket_created_buckets("year"),
+            ),
+        )
+
+    def get_temporal_field_metric(self, column: str) -> TemporalFieldMetric:
+        """Return min/max and null counts for an allowlisted timestamp column."""
+
+        if column not in ALLOWED_TEMPORAL_COLUMNS:
+            raise ValueError("Column is not approved for temporal metrics")
+        sql = f"""
+            SELECT
+                TO_CHAR(MIN({column}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                TO_CHAR(MAX({column}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                COUNT(id) FILTER (WHERE {column} IS NOT NULL),
+                COUNT(id) FILTER (WHERE {column} IS NULL)
             FROM clean_tickets
-            GROUP BY DATE_TRUNC('day', ingested_at)
-            ORDER BY DATE_TRUNC('day', ingested_at) ASC
-        """
-        week_sql = """
-            SELECT TO_CHAR(DATE_TRUNC('week', ingested_at), 'IYYY-IW') AS period, COUNT(id)
-            FROM clean_tickets
-            GROUP BY DATE_TRUNC('week', ingested_at)
-            ORDER BY DATE_TRUNC('week', ingested_at) ASC
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(day_sql)
-                by_day = [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
-                cursor.execute(week_sql)
-                by_week = [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
-        return TemporalDistribution(by_day=by_day, by_week=by_week)
+                cursor.execute(sql)
+                row = cursor.fetchone()
+        return TemporalFieldMetric(
+            min_at=str(row[0]) if row[0] is not None else None,
+            max_at=str(row[1]) if row[1] is not None else None,
+            populated_count=int(row[2]),
+            null_count=int(row[3]),
+            missing_count=int(row[3]),
+        )
+
+    def get_ticket_created_buckets(self, granularity: str) -> list[TemporalBucket]:
+        """Return month or year buckets based on ticket_created_at only."""
+
+        format_mask = _ticket_created_bucket_format(granularity)
+        sql = f"""
+            SELECT TO_CHAR(DATE_TRUNC(%s, ticket_created_at), '{format_mask}') AS period, COUNT(id)
+            FROM clean_tickets
+            WHERE ticket_created_at IS NOT NULL
+            GROUP BY DATE_TRUNC(%s, ticket_created_at)
+            ORDER BY DATE_TRUNC(%s, ticket_created_at) ASC
+        """
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, (granularity, granularity, granularity))
+                return [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
 
     def get_heuristic_like_pattern_count(self) -> int:
         """Return legacy SQL heuristic-like pattern count for diagnostics only."""
@@ -242,6 +279,12 @@ class AggregateTicketEdaRepository:
                 COUNT(id) FILTER (WHERE category IS NOT NULL AND BTRIM(category) <> '') AS category_count,
                 COUNT(id) FILTER (WHERE category IS NULL) AS category_null_count,
                 COUNT(id) FILTER (WHERE category IS NOT NULL AND BTRIM(category) = '') AS category_missing_count,
+                COUNT(id) FILTER (WHERE ticket_created_at IS NOT NULL) AS ticket_created_at_count,
+                COUNT(id) FILTER (WHERE ticket_created_at IS NULL) AS ticket_created_at_null_count,
+                COUNT(id) FILTER (WHERE ticket_updated_at IS NOT NULL) AS ticket_updated_at_count,
+                COUNT(id) FILTER (WHERE ticket_updated_at IS NULL) AS ticket_updated_at_null_count,
+                COUNT(id) FILTER (WHERE ticket_closed_at IS NOT NULL) AS ticket_closed_at_count,
+                COUNT(id) FILTER (WHERE ticket_closed_at IS NULL) AS ticket_closed_at_null_count,
                 COUNT(id) FILTER (WHERE ingested_at IS NOT NULL) AS time_count,
                 COUNT(id) FILTER (WHERE ingested_at IS NULL) AS time_null_count,
                 0 AS time_missing_count
@@ -255,7 +298,10 @@ class AggregateTicketEdaRepository:
             ("status", row[0], row[1], row[2]),
             ("priority", row[3], row[4], row[5]),
             ("category", row[6], row[7], row[8]),
-            ("ingestion_time", row[9], row[10], row[11]),
+            ("ticket_created_at", row[9], row[10], row[10]),
+            ("ticket_updated_at", row[11], row[12], row[12]),
+            ("ticket_closed_at", row[13], row[14], row[14]),
+            ("ingested_at", row[15], row[16], row[17]),
         )
         return [
             FieldCompletenessMetric(
@@ -275,3 +321,13 @@ def _safe_rate(count: int, total: int) -> float:
     if total <= 0:
         return 0.0
     return count / total
+
+
+def _ticket_created_bucket_format(granularity: str) -> str:
+    """Return a safe PostgreSQL TO_CHAR mask for ticket_created_at buckets."""
+
+    if granularity == "month":
+        return "YYYY-MM"
+    if granularity == "year":
+        return "YYYY"
+    raise ValueError("Unsupported ticket_created_at bucket granularity")

@@ -200,6 +200,9 @@ def test_agent_id_is_excluded_by_default_from_stored_objects_and_postgres_mappin
             stored_ticket.priority,
             stored_ticket.category,
             None,
+            None,
+            None,
+            None,
         )
     ]
 
@@ -271,6 +274,9 @@ def test_ingestion_pre_sanitizes_scanned_fields_before_ml_preprocessing(monkeypa
             "status": "[EMAIL]",
             "priority": "owner ([EMAIL])",
             "category": "[EMAIL]",
+            "ticket_created_at": None,
+            "ticket_updated_at": None,
+            "ticket_closed_at": None,
             "agent_id": "synthetic-agent-001",
         }
     ]
@@ -480,6 +486,9 @@ class _RecordingCursor:
             return
         self.values.append(value)
         self.rowcount = 1
+
+    def fetchone(self) -> tuple[bool]:
+        return (True,)
 
 
 class _UniqueExternalIdRepository:

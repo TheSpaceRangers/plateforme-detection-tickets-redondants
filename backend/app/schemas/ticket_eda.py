@@ -63,11 +63,31 @@ class TemporalBucket(BaseModel):
     count: int = Field(ge=0)
 
 
-class TemporalDistribution(BaseModel):
-    """Daily and weekly aggregate distributions based on ingestion time."""
+class TemporalFieldMetric(BaseModel):
+    """Nullable timestamp range and completeness for a non-sensitive date field."""
 
-    by_day: list[TemporalBucket]
-    by_week: list[TemporalBucket]
+    min_at: str | None = None
+    max_at: str | None = None
+    populated_count: int = Field(ge=0)
+    null_count: int = Field(ge=0)
+    missing_count: int = Field(ge=0)
+
+
+class TicketCreatedTemporalBuckets(BaseModel):
+    """Aggregate buckets based only on ticket_created_at business dates."""
+
+    by_month: list[TemporalBucket]
+    by_year: list[TemporalBucket]
+
+
+class TemporalDistribution(BaseModel):
+    """Aggregate temporal metrics separating business dates from ingestion time."""
+
+    ticket_created_at: TemporalFieldMetric
+    ticket_updated_at: TemporalFieldMetric
+    ticket_closed_at: TemporalFieldMetric
+    ingested_at: TemporalFieldMetric
+    ticket_created_buckets: TicketCreatedTemporalBuckets
 
 
 class PiiScanMetric(BaseModel):
