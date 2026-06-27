@@ -331,6 +331,73 @@ def test_repository_rejects_unsupported_ticket_created_bucket_granularity() -> N
         repository.get_ticket_created_buckets("day")
 
 
+def test_repository_ticket_created_month_buckets_use_cte_aggregates_and_date_filter() -> None:
+    # Arrange
+    cursor = FakeCursor()
+    cursor._fetchall_queue = [[("2025-01", 2), ("2025-02", 1)]]
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(cursor))
+
+    # Act
+    buckets = repository.get_ticket_created_buckets("month")
+
+    # Assert
+    assert [(bucket.period, bucket.count) for bucket in buckets] == [("2025-01", 2), ("2025-02", 1)]
+    assert len(cursor.statements) == 1
+    sql, params = cursor.statements[0]
+    normalized_sql = " ".join(sql.lower().split())
+    assert "with bucketed_tickets as" in normalized_sql
+    assert "select date_trunc(%s, ticket_created_at) as bucket_start" in normalized_sql
+    assert "where ticket_created_at >= %s" in normalized_sql
+    assert "select to_char(bucket_start, 'yyyy-mm') as period, count(*) as ticket_count" in normalized_sql
+    assert "from bucketed_tickets" in normalized_sql
+    assert "group by bucket_start" in normalized_sql
+    assert "order by bucket_start asc" in normalized_sql
+    assert params == ("month", repository._min_ticket_created_at)
+    assert params[1].isoformat() == "2025-01-01"
+
+
+def test_repository_ticket_created_buckets_exclude_historical_outliers_from_aggregate_result() -> None:
+    # Arrange
+    cursor = FakeCursor()
+    cursor._fetchall_queue = [[("2025-01", 2), ("2026-01", 3)]]
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(cursor))
+
+    # Act
+    buckets = repository.get_ticket_created_buckets("month")
+
+    # Assert
+    assert [bucket.period for bucket in buckets] == ["2025-01", "2026-01"]
+    assert all(bucket.count > 0 for bucket in buckets)
+    assert all(not bucket.period.startswith("2024") for bucket in buckets)
+    sql, params = cursor.statements[0]
+    assert "ticket_created_at >= %s" in sql.lower()
+    assert params == ("month", repository._min_ticket_created_at)
+
+
+def test_repository_ticket_created_buckets_expose_no_forbidden_ticket_content_or_identifiers() -> None:
+    # Arrange
+    cursor = FakeCursor()
+    cursor._fetchall_queue = [[("2025", 5)]]
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(cursor))
+
+    # Act
+    buckets = repository.get_ticket_created_buckets("year")
+
+    # Assert
+    payload = [model_to_dict(bucket) for bucket in buckets]
+    assert payload == [{"period": "2025", "count": 5}]
+    assert_no_forbidden_content(payload)
+    sql, _params = cursor.statements[0]
+    normalized_sql = sql.lower()
+    assert "summary" not in normalized_sql
+    assert "details" not in normalized_sql
+    assert "external_ticket_id" not in normalized_sql
+    assert "agent_id_pseudonym" not in normalized_sql
+    assert "payload" not in normalized_sql
+    assert "select *" not in normalized_sql
+    assert "count(*)" in normalized_sql
+
+
 class SyntheticRepository:
     """Repository mock returning deterministic synthetic aggregate metrics."""
 
