@@ -253,15 +253,19 @@ class AggregateTicketEdaRepository:
 
         format_mask = _ticket_created_bucket_format(granularity)
         sql = f"""
-            SELECT TO_CHAR(DATE_TRUNC(%s, ticket_created_at), '{format_mask}') AS period, COUNT(id)
-            FROM clean_tickets
-            WHERE ticket_created_at >= %s
-            GROUP BY DATE_TRUNC(%s, ticket_created_at)
-            ORDER BY DATE_TRUNC(%s, ticket_created_at) ASC
+            WITH bucketed_tickets AS (
+                SELECT DATE_TRUNC(%s, ticket_created_at) AS bucket_start
+                FROM clean_tickets
+                WHERE ticket_created_at >= %s
+            )
+            SELECT TO_CHAR(bucket_start, '{format_mask}') AS period, COUNT(*) AS ticket_count
+            FROM bucketed_tickets
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql, (granularity, self._min_ticket_created_at, granularity, granularity))
+                cursor.execute(sql, (granularity, self._min_ticket_created_at))
                 return [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
 
     def get_heuristic_like_pattern_count(self) -> int:
