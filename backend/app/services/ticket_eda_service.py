@@ -13,16 +13,44 @@ from backend.app.schemas.ticket_eda import (
 from ml.src.preprocessing.pii import PII_REPLACEMENTS, detect_pii
 
 FORBIDDEN_OUTPUT_KEYS: frozenset[str] = frozenset(
-    ("summary", "details", "external_ticket_id", "agent_id_pseudonym", "payload")
+    (
+        "id",
+        "ids",
+        "ticket_id",
+        "summary",
+        "details",
+        "external_ticket_id",
+        "agent_id_pseudonym",
+        "payload",
+        "secret",
+        "secrets",
+        "password",
+        "api_key",
+        "token",
+    )
 )
-FORBIDDEN_OUTPUT_VALUE_TOKENS: frozenset[str] = frozenset(("external_ticket_id", "agent_id_pseudonym", "payload"))
+FORBIDDEN_OUTPUT_VALUE_TOKENS: frozenset[str] = frozenset(
+    ("external_ticket_id", "agent_id_pseudonym", "payload", "api_key", "password", "secret")
+)
 
 
 class AggregateTicketEdaReader(Protocol):
     """Repository contract exposing aggregate-only ticket EDA methods."""
 
     def count_tickets(self) -> int:
-        """Return total ticket count."""
+        """Return filtered ticket count."""
+
+    def count_source_tickets(self) -> int:
+        """Return unfiltered source ticket count."""
+
+    def count_historical_outlier_tickets(self) -> int:
+        """Return tickets excluded because their business creation date is historical."""
+
+    def count_missing_ticket_created_at_tickets(self) -> int:
+        """Return tickets excluded because their business creation date is missing."""
+
+    def get_applied_min_ticket_created_at(self) -> str:
+        """Return the inclusive minimum business creation date applied to EDA metrics."""
 
     def get_distribution(self, column: str) -> Any:
         """Return anonymous distribution for a controlled dimension."""
@@ -69,8 +97,14 @@ class AggregateTicketEdaService:
     def build_report(self) -> AggregateTicketEdaReport:
         """Build a safe aggregate-only report and fail closed on leak risk."""
 
+        included_count = self._repository.count_tickets()
         report = AggregateTicketEdaReport(
-            total_tickets=self._repository.count_tickets(),
+            total_tickets=included_count,
+            total_source_count=self._repository.count_source_tickets(),
+            included_count=included_count,
+            excluded_historical_outlier_count=self._repository.count_historical_outlier_tickets(),
+            excluded_missing_ticket_created_at_count=self._repository.count_missing_ticket_created_at_tickets(),
+            applied_min_ticket_created_at=self._repository.get_applied_min_ticket_created_at(),
             status_distribution=self._repository.get_distribution("status"),
             priority_distribution=self._repository.get_distribution("priority"),
             category_distribution=self._repository.get_distribution("category"),

@@ -58,6 +58,15 @@ Champs exclus par défaut :
 - Les logs ne doivent contenir ni texte de ticket, ni PII, ni secret ; seules des métadonnées non sensibles sont admises, par exemple nombre de lignes traitées ou statut d'échec.
 - Le contrôle PII résiduelle est bloquant avant export, stockage et training.
 
+## Périmètre temporel EDA/ML
+
+- Les métriques EDA/ML filtrées doivent exclure par défaut les tickets dont `ticket_created_at` est antérieur au `2025-01-01`.
+- Ce filtre est appliqué uniquement au calcul des métriques et aux datasets ML filtrés en mémoire ; il ne supprime, ne met à jour et ne masque jamais les lignes source en base.
+- Les sorties EDA doivent exposer uniquement des compteurs agrégés non identifiants : `total_source_count`, `included_count`, `excluded_historical_outlier_count`, `excluded_missing_ticket_created_at_count` et `applied_min_ticket_created_at`.
+- Les champs texte, IDs, payloads, PII et secrets restent interdits dans toute sortie EDA.
+
+Pourquoi : les tickets pré-2025 sont acceptés comme outliers historiques probables et ne doivent pas biaiser les métriques de démonstration.
+
 ## No raw durable
 
 Interdictions pour le futur branchement :

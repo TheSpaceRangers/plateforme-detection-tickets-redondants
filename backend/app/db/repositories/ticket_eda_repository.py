@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import date
 from typing import Any
 
 from backend.app.schemas.ticket_eda import (
@@ -28,6 +29,7 @@ DENIED_EXPOSURE_COLUMNS: frozenset[str] = frozenset(
 )
 KNOWN_PLACEHOLDERS: tuple[str, ...] = ("[EMAIL]", "[PHONE]", "[URL]", "[IP]", "[IDENTIFIER]")
 TEXT_SCAN_BATCH_SIZE = 500
+DEFAULT_MIN_TICKET_CREATED_AT = date(2025, 1, 1)
 
 
 class AggregateTicketEdaRepository:
@@ -45,15 +47,51 @@ class AggregateTicketEdaRepository:
     def __init__(self, connection_factory: Callable[[], Any]) -> None:
         if not hasattr(self, "_initialized"):
             self._connection_factory = connection_factory
+            self._min_ticket_created_at = DEFAULT_MIN_TICKET_CREATED_AT
             self._initialized = True
 
     def count_tickets(self) -> int:
-        """Return the total number of clean tickets."""
+        """Return the number of clean tickets included in filtered EDA metrics."""
+
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(id) FROM clean_tickets WHERE ticket_created_at >= %s",
+                    (self._min_ticket_created_at,),
+                )
+                return int(cursor.fetchone()[0])
+
+    def count_source_tickets(self) -> int:
+        """Return the unfiltered number of clean tickets available at source."""
 
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT COUNT(id) FROM clean_tickets")
                 return int(cursor.fetchone()[0])
+
+    def count_historical_outlier_tickets(self) -> int:
+        """Return tickets excluded by the default historical outlier boundary."""
+
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(id) FROM clean_tickets WHERE ticket_created_at < %s",
+                    (self._min_ticket_created_at,),
+                )
+                return int(cursor.fetchone()[0])
+
+    def count_missing_ticket_created_at_tickets(self) -> int:
+        """Return source tickets excluded because ticket_created_at is missing."""
+
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(id) FROM clean_tickets WHERE ticket_created_at IS NULL")
+                return int(cursor.fetchone()[0])
+
+    def get_applied_min_ticket_created_at(self) -> str:
+        """Return the inclusive ticket_created_at date applied to all filtered EDA metrics."""
+
+        return self._min_ticket_created_at.isoformat()
 
     def get_distribution(self, column: str) -> DistributionMetric:
         """Return anonymous aggregate distribution for an allowlisted column."""
@@ -68,7 +106,7 @@ class AggregateTicketEdaRepository:
                     ROW_NUMBER() OVER (ORDER BY COUNT(id) DESC, {expression} ASC) AS bucket_rank,
                     COUNT(id) AS ticket_count
                 FROM clean_tickets
-                WHERE {expression} IS NOT NULL
+                WHERE ticket_created_at >= %s AND {expression} IS NOT NULL
                 GROUP BY {expression}
             ) AS ranked
             ORDER BY ranked.bucket_rank ASC
@@ -79,12 +117,13 @@ class AggregateTicketEdaRepository:
                 COUNT(id) FILTER (WHERE {column} IS NULL) AS null_count,
                 COUNT(id) FILTER (WHERE {column} IS NOT NULL AND BTRIM({column}) = '') AS missing_count
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(counts_sql)
+                cursor.execute(counts_sql, (self._min_ticket_created_at,))
                 counts = cursor.fetchone()
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 buckets = [DistributionBucket(rank=int(row[0]), count=int(row[1])) for row in cursor.fetchall()]
         non_null_distinct_count = int(counts[0])
         return DistributionMetric(
@@ -115,10 +154,11 @@ class AggregateTicketEdaRepository:
                     WITHIN GROUP (ORDER BY CHAR_LENGTH({column})))[4], 0) AS p99,
                 COALESCE(AVG(CASE WHEN BTRIM({column}) = '' THEN 1.0 ELSE 0.0 END), 0) AS empty_rate
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 row = cursor.fetchone()
         length = TextLengthMetric(
             min=int(row[0]),
@@ -137,10 +177,11 @@ class AggregateTicketEdaRepository:
         sql = """
             SELECT COALESCE(AVG(CASE WHEN LOWER(BTRIM(summary)) = 'untitled ticket' THEN 1.0 ELSE 0.0 END), 0)
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 return float(cursor.fetchone()[0])
 
     def get_placeholder_metrics(self) -> list[PlaceholderMetric]:
@@ -151,12 +192,12 @@ class AggregateTicketEdaRepository:
         sql = """
             SELECT COUNT(id)
             FROM clean_tickets
-            WHERE POSITION(%s IN summary) > 0 OR POSITION(%s IN details) > 0
+            WHERE ticket_created_at >= %s AND (POSITION(%s IN summary) > 0 OR POSITION(%s IN details) > 0)
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
                 for placeholder in KNOWN_PLACEHOLDERS:
-                    cursor.execute(sql, (placeholder, placeholder))
+                    cursor.execute(sql, (self._min_ticket_created_at, placeholder, placeholder))
                     count = int(cursor.fetchone()[0])
                     metrics.append(
                         PlaceholderMetric(
@@ -193,10 +234,11 @@ class AggregateTicketEdaRepository:
                 COUNT(id) FILTER (WHERE {column} IS NOT NULL),
                 COUNT(id) FILTER (WHERE {column} IS NULL)
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 row = cursor.fetchone()
         return TemporalFieldMetric(
             min_at=str(row[0]) if row[0] is not None else None,
@@ -213,13 +255,13 @@ class AggregateTicketEdaRepository:
         sql = f"""
             SELECT TO_CHAR(DATE_TRUNC(%s, ticket_created_at), '{format_mask}') AS period, COUNT(id)
             FROM clean_tickets
-            WHERE ticket_created_at IS NOT NULL
+            WHERE ticket_created_at >= %s
             GROUP BY DATE_TRUNC(%s, ticket_created_at)
             ORDER BY DATE_TRUNC(%s, ticket_created_at) ASC
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql, (granularity, granularity, granularity))
+                cursor.execute(sql, (granularity, self._min_ticket_created_at, granularity, granularity))
                 return [TemporalBucket(period=str(row[0]), count=int(row[1])) for row in cursor.fetchall()]
 
     def get_heuristic_like_pattern_count(self) -> int:
@@ -235,12 +277,21 @@ class AggregateTicketEdaRepository:
                    OR summary ~* %s OR details ~* %s
             ) AS rows_with_heuristic_like_pattern
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     sql,
-                    (email_pattern, email_pattern, phone_pattern, phone_pattern, ip_pattern, ip_pattern),
+                    (
+                        email_pattern,
+                        email_pattern,
+                        phone_pattern,
+                        phone_pattern,
+                        ip_pattern,
+                        ip_pattern,
+                        self._min_ticket_created_at,
+                    ),
                 )
                 row = cursor.fetchone()
         return int(row[0])
@@ -253,10 +304,11 @@ class AggregateTicketEdaRepository:
         sql = """
             SELECT COALESCE(summary, ''), COALESCE(details, '')
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 while True:
                     rows = cursor.fetchmany(batch_size)
                     if not rows:
@@ -289,10 +341,11 @@ class AggregateTicketEdaRepository:
                 COUNT(id) FILTER (WHERE ingested_at IS NULL) AS time_null_count,
                 0 AS time_missing_count
             FROM clean_tickets
+            WHERE ticket_created_at >= %s
         """
         with self._connection_factory() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, (self._min_ticket_created_at,))
                 row = cursor.fetchone()
         fields = (
             ("status", row[0], row[1], row[2]),
