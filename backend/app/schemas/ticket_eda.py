@@ -114,6 +114,11 @@ class AggregateTicketEdaReport(BaseModel):
     """Safe aggregate-only EDA report for clean tickets."""
 
     total_tickets: int = Field(ge=0)
+    total_source_count: int = Field(ge=0)
+    included_count: int = Field(ge=0)
+    excluded_historical_outlier_count: int = Field(ge=0)
+    excluded_missing_ticket_created_at_count: int = Field(ge=0)
+    applied_min_ticket_created_at: str
     status_distribution: DistributionMetric
     priority_distribution: DistributionMetric
     category_distribution: DistributionMetric

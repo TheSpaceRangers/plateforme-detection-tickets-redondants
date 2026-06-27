@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from inspect import signature
 from typing import Any
 
 import pytest
@@ -48,6 +49,11 @@ def safe_report() -> AggregateTicketEdaReport:
     length = TextLengthMetric(min=0, mean=12.5, max=30, p50=10, p90=20, p95=25, p99=30)
     return AggregateTicketEdaReport(
         total_tickets=4,
+        total_source_count=6,
+        included_count=4,
+        excluded_historical_outlier_count=1,
+        excluded_missing_ticket_created_at_count=1,
+        applied_min_ticket_created_at="2025-01-01",
         status_distribution=DistributionMetric(
             distinct_count=2,
             non_null_distinct_count=2,
@@ -242,6 +248,46 @@ def test_repository_uses_read_only_aggregate_sql_with_fake_cursor() -> None:
             assert any(token in sql for token in ("char_length", "btrim", "position", "~*", "lower"))
 
 
+def test_repository_applies_default_ticket_created_at_scope_to_counts() -> None:
+    # Arrange
+    cursor = FakeCursor()
+    cursor._fetchone_queue = [(3,), (5,), (1,), (1,)]
+    repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(cursor))
+
+    # Act
+    included_count = repository.count_tickets()
+    total_source_count = repository.count_source_tickets()
+    historical_outlier_count = repository.count_historical_outlier_tickets()
+    missing_ticket_created_at_count = repository.count_missing_ticket_created_at_tickets()
+    applied_min_ticket_created_at = repository.get_applied_min_ticket_created_at()
+
+    # Assert
+    assert included_count == 3
+    assert total_source_count == 5
+    assert historical_outlier_count == 1
+    assert missing_ticket_created_at_count == 1
+    assert applied_min_ticket_created_at == "2025-01-01"
+    statements = [(sql.lower(), params) for sql, params in cursor.statements]
+    assert "where ticket_created_at >= %s" in statements[0][0]
+    assert statements[0][1] == (repository._min_ticket_created_at,)
+    assert "where ticket_created_at < %s" in statements[2][0]
+    assert statements[2][1] == (repository._min_ticket_created_at,)
+    assert "where ticket_created_at is null" in statements[3][0]
+
+
+def test_backend_repository_filter_is_not_externally_configurable() -> None:
+    # Arrange
+    repository_init_signature = signature(AggregateTicketEdaRepository.__init__)
+
+    # Act
+    public_parameters = set(repository_init_signature.parameters) - {"self"}
+
+    # Assert
+    assert public_parameters == {"connection_factory"}
+    assert not any("filter" in parameter for parameter in public_parameters)
+    assert not any("min_ticket_created_at" in parameter for parameter in public_parameters)
+
+
 def test_repository_rejects_forbidden_distribution_column() -> None:
     # Arrange
     repository = AggregateTicketEdaRepository(connection_factory=lambda: FakeConnection(FakeCursor()))
@@ -290,6 +336,18 @@ class SyntheticRepository:
 
     def count_tickets(self) -> int:
         return 4
+
+    def count_source_tickets(self) -> int:
+        return 6
+
+    def count_historical_outlier_tickets(self) -> int:
+        return 1
+
+    def count_missing_ticket_created_at_tickets(self) -> int:
+        return 1
+
+    def get_applied_min_ticket_created_at(self) -> str:
+        return "2025-01-01"
 
     def get_distribution(self, column: str) -> DistributionMetric:
         distributions = {
@@ -379,6 +437,11 @@ def test_service_calculates_synthetic_aggregate_metrics_from_repository_mock(mon
 
     # Assert
     assert report.total_tickets == 4
+    assert report.total_source_count == 6
+    assert report.included_count == 4
+    assert report.excluded_historical_outlier_count == 1
+    assert report.excluded_missing_ticket_created_at_count == 1
+    assert report.applied_min_ticket_created_at == "2025-01-01"
     assert report.status_distribution.buckets[0].count == 3
     assert report.priority_distribution.null_count == 1
     assert report.priority_distribution.missing_count == 1
@@ -395,6 +458,22 @@ def test_service_calculates_synthetic_aggregate_metrics_from_repository_mock(mon
     assert report.completeness[1].completeness_rate == 0.5
     payload = model_to_dict(report)
     assert REMOVED_PII_SCAN_FIELDS.isdisjoint(payload["pii_scan"])
+    assert_no_forbidden_content(payload)
+
+
+def test_service_report_exposes_only_aggregate_scope_fields_without_text() -> None:
+    # Arrange
+    service = AggregateTicketEdaService(repository=SyntheticRepository())
+
+    # Act
+    payload = model_to_dict(service.build_report())
+
+    # Assert
+    assert payload["total_source_count"] == 6
+    assert payload["included_count"] == 4
+    assert payload["excluded_historical_outlier_count"] == 1
+    assert payload["excluded_missing_ticket_created_at_count"] == 1
+    assert payload["applied_min_ticket_created_at"] == "2025-01-01"
     assert_no_forbidden_content(payload)
 
 
