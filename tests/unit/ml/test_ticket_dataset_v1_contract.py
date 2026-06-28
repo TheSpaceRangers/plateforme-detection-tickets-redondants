@@ -8,7 +8,7 @@ from typing import Any, Mapping
 
 import pytest
 
-from src.datasets.contract import (
+from src.ml_contract.contract import (
     FEATURE_ALLOWLIST,
     REPORT_ALLOWLIST,
     DatasetContractError,
@@ -16,9 +16,9 @@ from src.datasets.contract import (
     validate_feature_columns,
     validate_raw_input_columns,
 )
-from src.datasets.dry_run_report import build_ticket_dataset_v1_dry_run_report
-from src.datasets.ticket_dataset_v1_dry_run import main
-from src.datasets.transforms import build_safe_ticket_features, planned_feature_columns
+from src.ml_contract.dry_run_report import build_ticket_dataset_v1_dry_run_report
+from src.ml_contract.ticket_dataset_v1_dry_run import main
+from src.ml_contract.transforms import build_safe_ticket_features, planned_feature_columns
 from src.preprocessing.pii import PII_REPLACEMENTS, detect_pii
 
 

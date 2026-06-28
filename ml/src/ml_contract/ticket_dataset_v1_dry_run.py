@@ -12,7 +12,7 @@ try:  # pragma: no cover - supports module and direct script execution.
     from .dry_run_report import build_ticket_dataset_v1_dry_run_report
 except ImportError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from src.datasets.dry_run_report import build_ticket_dataset_v1_dry_run_report
+    from src.ml_contract.dry_run_report import build_ticket_dataset_v1_dry_run_report
 
 
 def main(argv: Sequence[str] | None = None) -> int:
