@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping
 
 try:  # pragma: no cover - compatibility for both `src.*` and repository-root imports.
+    from src.eda.quality import build_ticket_dataset_quality_report
     from src.eda.ticket_scope import build_ticket_eda_scope_metrics
 except ModuleNotFoundError:  # pragma: no cover
+    from ml.src.eda.quality import build_ticket_dataset_quality_report
     from ml.src.eda.ticket_scope import build_ticket_eda_scope_metrics
 
 from .contract import (
@@ -18,6 +20,7 @@ from .contract import (
     validate_feature_columns,
     validate_raw_input_columns,
 )
+from .lot3_readiness import build_lot3_readiness_report
 from .transforms import build_safe_ticket_features, planned_feature_columns
 
 
@@ -44,6 +47,7 @@ def build_ticket_dataset_v1_dry_run_report(
     source_records = list(records)
     raw_validation = validate_raw_input_columns(source_records)
     scope_metrics = build_ticket_eda_scope_metrics(source_records)
+    quality_report = build_ticket_dataset_quality_report(source_records)
     feature_rows, transform_metrics = build_safe_ticket_features(source_records)
     feature_validation = validate_feature_columns(planned_feature_columns())
     row_column_valid = _all_feature_rows_match_contract(feature_rows)
@@ -80,6 +84,8 @@ def build_ticket_dataset_v1_dry_run_report(
         "forbidden_column_count": forbidden_column_count,
         "exact_timestamp_column_count": exact_timestamp_column_count,
         "raw_text_column_count": raw_text_column_count,
+        "quality_report": quality_report.to_safe_output(),
+        "lot3_readiness": build_lot3_readiness_report(scope_metrics.included_count).to_safe_output(),
         "gates": tuple(gate.to_mapping() for gate in gates),
     }
     assert_safe_report_keys(report)

@@ -40,22 +40,52 @@ class PiiResidualError(ValueError):
 
 PII_PATTERNS: Mapping[str, Pattern[str]] = {
     "email": re.compile(_EMAIL_PATTERN, re.IGNORECASE),
-    "fr_phone": re.compile(r"(?<!\d)(?:\+33|0033|0)\s*[1-9](?:[\s.-]*\d{2}){4}(?!\d)"),
+    "fr_phone": re.compile(
+        r"(?<!\d)(?:\+33|0033|0)\s*[1-9](?:[\s.-]*\d{2}){4}(?!\d)"
+    ),
     "ipv4": re.compile(
         r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
     ),
-    "url": re.compile(r"\b(?:https?://|www\.)[^\s<>'\"]+", re.IGNORECASE),
-    "obvious_identifier": re.compile(
-        r"\b(?:agent_id|user_id|client_id|customer_id|account_id|identifiant|login|username)\b\s*[:=#-]?\s*[A-Z0-9._@-]{3,}",
+    "mac_address": re.compile(
+        r"\b[A-F0-9]{2}(?:[:-][A-F0-9]{2}){5}\b",
         re.IGNORECASE,
     ),
+    "ipv6": re.compile(
+        r"\b(?:[A-F0-9]{1,4}:){2,7}[A-F0-9]{1,4}\b",
+        re.IGNORECASE,
+    ),
+    "url": re.compile(r"\b(?:https?://|www\.)[^\s<>'\"]+", re.IGNORECASE),
+    "iban": re.compile(r"\b[A-Z]{2}\d{2}(?:[\s-]?[A-Z0-9]){11,30}\b", re.IGNORECASE),
+    "payment_card": re.compile(r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d)"),
+    "fr_nir": re.compile(
+        r"(?<!\d)[12]\s?\d{2}\s?(?:0[1-9]|1[0-2])\s?\d{2}\s?\d{3}\s?\d{3}\s?\d{2}(?!\d)"
+    ),
+    "fr_siret": re.compile(
+        r"\b(?:siret|siren)\b\s*[:=#-]?\s*\d(?:[\s.-]*\d){8,13}\b",
+        re.IGNORECASE,
+    ),
+    "obvious_identifier": re.compile(
+        r"\b(?:agent_id|external_ticket_id|ticket_id|user_id|client_id|"
+        r"customer_id|account_id|identifiant|login|username)\b\s*[:=#-]?\s*[A-Z0-9._@-]{3,}",
+        re.IGNORECASE,
+    ),
+}
+
+PII_CATEGORY_PRIORITY: Mapping[str, int] = {
+    category: index for index, category in enumerate(PII_PATTERNS)
 }
 
 PII_REPLACEMENTS: Mapping[str, str] = {
     "email": "[EMAIL]",
     "fr_phone": "[PHONE]",
     "ipv4": "[IP]",
+    "ipv6": "[IP]",
+    "mac_address": "[DEVICE_IDENTIFIER]",
     "url": "[URL]",
+    "iban": "[FINANCIAL_IDENTIFIER]",
+    "payment_card": "[FINANCIAL_IDENTIFIER]",
+    "fr_nir": "[OFFICIAL_IDENTIFIER]",
+    "fr_siret": "[ORGANIZATION_IDENTIFIER]",
     "obvious_identifier": "[IDENTIFIER]",
 }
 
@@ -70,7 +100,16 @@ def detect_pii(text: str) -> tuple[PiiMatch, ...]:
             PiiMatch(category=category, start=match.start(), end=match.end())
             for match in pattern.finditer(normalized_text)
         )
-    return tuple(sorted(matches, key=lambda item: (item.start, item.end, item.category)))
+    return tuple(
+        sorted(
+            matches,
+            key=lambda item: (
+                item.start,
+                -(item.end - item.start),
+                PII_CATEGORY_PRIORITY[item.category],
+            ),
+        )
+    )
 
 
 def sanitize_text(text: str) -> PiiSanitizationResult:

@@ -5,6 +5,7 @@
 - Filtre officiel : `ticket_created_at >= 2025-01-01`.
 - Référence attendue issue de l'EDA filtrée : 13 578 inclus, 2 historiques exclus, 9 sans date exclus.
 - Le dry-run n'appelle pas HaloPSA, ne lit pas `.env`, n'exporte aucun dataset et n'affiche aucun ticket, ID, payload ou texte ligne par ligne.
+- Le jeu synthétique embarqué est non réel et couvre les cas préparatoires Lot 3 : ligne dupliquée, résumé manquant, PII fictive masquée, date hors scope et date absente.
 
 ## Allowlist stricte des colonnes dataset prévues
 
@@ -22,7 +23,7 @@ Entrées raw transitoires autorisées uniquement en mémoire pour transformation
 
 ## Denylist stricte
 
-Colonnes interdites en dataset/rapport : `external_ticket_id`, `agent_id`, `agent_id_pseudonym`, `payload`, IDs (`id`, `ticket_id`, `user_id`, `client_id`, `customer_id`, `account_id` et motifs `_id`/UUID/GUID), timestamps exacts (`created_at`, `updated_at`, `ticket_created_at`, `closed_at`, `resolved_at`, motifs `_at`/`timestamp`), `priority`, `category`, texte brut ou non tronqué (`summary`, `details`, `raw_text`, `cleaned_text`). Toute colonne source injectable hors `summary`, `details`, `ticket_created_at` est bloquée par défaut.
+Colonnes interdites en dataset/rapport : `external_ticket_id` (identifiant indirect non exportable ML), `agent_id`, `agent_id_pseudonym` par défaut, `payload`, raw IDs (`id`, `ticket_id`, `user_id`, `client_id`, `customer_id`, `account_id` et motifs `_id`/UUID/GUID), timestamps exacts (`created_at`, `updated_at`, `ticket_created_at`, `closed_at`, `resolved_at`, motifs `_at`/`timestamp`), `priority`, `category`, texte brut ou non tronqué (`summary`, `details`, `raw_text`, `cleaned_text`). Toute colonne source injectable hors `summary`, `details`, `ticket_created_at` est bloquée par défaut.
 
 ## Transformations
 
@@ -44,6 +45,17 @@ Colonnes interdites en dataset/rapport : `external_ticket_id`, `agent_id`, `agen
 ## Rapport dry-run autorisé
 
 Le rapport est uniquement agrégé : compteurs de scope, colonnes prévues, compteurs de violations et statut des gates. Il ne contient ni contenu ticket, ni ID, ni payload, ni valeur source.
+
+Il inclut également des métriques qualité agrégées validables sans fuite de contenu : valeurs manquantes par champ allowlisté, nombre de signatures dupliquées, nombre de colonnes source, colonnes hors allowlist et distribution de longueurs par buckets.
+
+## Critères d'entrée Lot 3 préparatoire
+
+- Aucun entraînement n'est activé par défaut (`training_enabled=false`).
+- Les labels restent obligatoires avant tout apprentissage supervisé ou génération pairwise réelle.
+- Les labels synthétiques servent uniquement à préparer le contrat et les tests ; ils ne permettent aucun entraînement avant GO conformité.
+- La génération pairwise est seulement cadrée comme possible si la volumétrie incluse synthétique atteint le minimum de split préparatoire.
+- La stratégie prévue après GO est un split stratifié/groupé 70/30 avec `random_state=42`, à appliquer uniquement après validation conformité, labels validés et exploration du schéma réel.
+- Anti-fuite obligatoire : grouper par groupe de redondance ou par ticket source, conserver toutes les paires dérivées d'un même groupe dans le même split, et empêcher qu'une paire inverse apparaisse dans l'autre split.
 
 ## Conservation, purge et génération réelle
 

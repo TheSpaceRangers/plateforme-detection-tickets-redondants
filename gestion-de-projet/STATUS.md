@@ -1,8 +1,8 @@
 # STATUS — Plateforme Détection Tickets Redondants
 
-**Dernière mise à jour** : 2026-05-22  
+**Dernière mise à jour** : 2026-07-01  
 **Pilotage** : Projet complet — SYNAPPSE / RNCP 37137  
-**Statut global** : 🔄 Planification globale initialisée, Lot 2 critique à sécuriser
+**Statut global** : 🔄 Lot 2 clôturé conditionnel synthétique ; Lot 3 préparatoire autorisé sans données réelles
 
 ## Vision produit
 
@@ -24,9 +24,9 @@ Plateforme IA privée et auto-hébergée permettant de détecter automatiquement
 | --- | ------------- | -------- | ------------------ | ------ |
 | 0 | Mai 2026 | Gouvernance projet et socle GitHub | Repo public, branche `main` protégée, backlog, sprints, workflow PR | ✅ Terminé |
 | 1 | Mars — Avril 2026 | Cadrage fonctionnel, technique et réglementaire | Note de cadrage, audit API HaloPSA, dictionnaire données, analyse RGPD, veille | ✅ À confirmer |
-| 2 | Mai 2026 | Socle données exploitable | Extraction contrôlée HaloPSA, PostgreSQL, nettoyage NLP, EDA, dataset ticket | 🔴 Critique |
-| 3 | Juin 2026 | Pipeline ML supervisé | Labels, dataset pairwise, features TF-IDF, KNN/RF/DT/LR, Grid Search, métriques | ⏳ Bloqué par Lot 2 |
-| 4 | Juillet 2026 | Application web locale | API FastAPI, UI React/Vite, dashboard, intégration modèle, logs prédictions | ⏳ À venir |
+| 2 | Mai 2026 | Socle données exploitable | Extraction contrôlée HaloPSA, PostgreSQL, nettoyage NLP, EDA, dataset ticket | ✅ Terminé conditionnel synthétique |
+| 3 | Juin 2026 | Pipeline ML supervisé | Labels, dataset pairwise, features TF-IDF, KNN/RF/DT/LR, Grid Search, métriques | 🟠 Go conditionnel synthétique |
+| 4 | Juillet 2026 | Application web locale | API FastAPI, UI React/Vite, dashboard, intégration modèle, logs prédictions | 🟠 Go conditionnel préparatoire |
 | 5 | Juillet — Août 2026 | Qualité, sécurité, conformité, CI/CD locale | Tests, audit sécurité, audit RGPD, CI GitHub, documentation déploiement local | ⏳ À venir |
 | 6 | Août — Septembre 2026 | Mémoire et soutenance | Mémoire PDF, annexes, support oral, répétitions, preuves projet | ⏳ À venir |
 
@@ -35,10 +35,10 @@ Plateforme IA privée et auto-hébergée permettant de détecter automatiquement
 | Date | Jalon | Critère de validation | Statut |
 | ---- | ----- | --------------------- | ------ |
 | 2026-05-22 | Gouvernance GitHub active | Repo créé, `main` protégée, PR obligatoire | ✅ Atteint |
-| 2026-05-31 | Socle données exploitable | Extraction contrôlée + PostgreSQL + dataset nettoyé + EDA | 🔴 À risque |
-| 2026-06-15 | Dataset ML labellisé | Paires tickets, labels, split ≥ 70/30 validés | ⏳ À venir |
+| 2026-05-31 | Socle données exploitable | Extraction contrôlée + PostgreSQL + dataset nettoyé + EDA | ✅ Atteint en mode synthétique conforme |
+| 2026-06-15 | Dataset ML labellisé | Paires tickets, labels, split ≥ 70/30 validés | 🟠 Autorisé en synthétique uniquement |
 | 2026-06-30 | Modèle ML sélectionné | 4 algorithmes comparés, Grid Search, métriques documentées | ⏳ À venir |
-| 2026-07-15 | API + modèle intégrés | Endpoint prédiction opérationnel et traçable | ⏳ À venir |
+| 2026-07-15 | API + modèle intégrés | Endpoint prédiction opérationnel et traçable | 🔴 À rebaseliner |
 | 2026-07-31 | Application web locale prête | Dashboard utilisable, score + explication visibles | ⏳ À venir |
 | 2026-08-15 | Qualité et conformité validées | Tests, audits sécurité/RGPD, documentation exploitation | ⏳ À venir |
 | 2026-09-01 | Mémoire déposé | PDF final déposé | ⏳ À venir |
@@ -156,7 +156,63 @@ Plateforme IA privée et auto-hébergée permettant de détecter automatiquement
 | 2026-05-22 | Planification globale structurée en 7 sprints directeurs. | Vision projet complète jusqu'à soutenance. |
 | 2026-05-22 | Lot 3 ML interdit tant que Lot 2 données/conformité non validé. | Évite de produire un ML non reproductible ou non conforme. |
 | 2026-05-22 | Extraction HaloPSA réelle interdite sans garde-fous RGPD. | Réduit le risque légal et sécurité. |
+| 2026-07-01 | Reprise de pilotage : dépôt local `main` propre et aligné `origin/main`; consultation GitHub avancée non vérifiable car `gh` non authentifié. | Prioriser rapport scrum-master et rétablissement visibilité GitHub avant validation de sprint. |
+| 2026-07-01 | Rapport Eisenhower reçu : projet réel situé en Sprint 2 partiel, Lot 3 préparatoire, Lot 4 non atteint hors préparation. | No-Go intégration modèle/application complète ; Go conditionnel uniquement pour contrat API, mocks et squelette local. |
+| 2026-07-01 | Lot 2 requalifié par Eisenhower en terminé conditionnel synthétique après suppression des indices sensibles versionnés. | Autorise Lot 3 préparatoire synthétique ; extraction réelle HaloPSA reste interdite. |
+
+## Journal de reprise — 2026-07-01
+
+### État confirmé
+
+- Dépôt local sur `main`, aligné avec `origin/main`, working tree propre.
+- Dernier commit connu : `70ab953 feat: add guarded ml v1 export flow (#47)`.
+- Aucun `.env` réel ni `.csv` détecté par le point DevOps ; `.gitignore` couvre les artefacts sensibles courants.
+- Aucun workflow CI local identifié dans `.github/workflows/`.
+
+### Points non confirmés
+
+- PR, issues, milestones et GitHub Project non vérifiables localement : GitHub CLI non authentifié.
+- État réel d'avancement confirmé par scrum-master : Sprint 2 partiel / Lot 2 non validé ; Lot 4 roadmap non atteint.
+- Branches distantes nombreuses à auditer par DevOps une fois l'accès GitHub rétabli.
+
+### Décision de reprise après rapport scrum-master
+
+- Position projet retenue : **Sprint 3 préparatoire synthétique**, puis Sprint 4 applicatif seulement après preuves ML.
+- **No-Go** pour intégration modèle réelle, endpoint prédiction complet, dashboard avec tickets réels et validation Sprint 4 terminé.
+- **Go conditionnel Lot 4 préparatoire** : contrat API, mocks/données synthétiques, squelette FastAPI local, politique de logs minimisés et tests préparatoires.
+- Priorité immédiate : produire dataset pairwise synthétique, labels, split 70/30 préparatoire, baseline ML, contrôles anti-fuite et tests sous Python 3.11+.
+
+### Clôture Lot 2 — décision du 2026-07-01
+
+**Statut** : ✅ Terminé conditionnel synthétique.
+
+Preuves retenues :
+
+- Ancienne valeur PostgreSQL par défaut sensible absente du working tree.
+- Ancienne instance HaloPSA réelle absente du working tree.
+- `.opencode/context/domain/halopsa.md` utilise des placeholders pour l'instance et l'URL API.
+- `docker-compose.yml` impose `POSTGRES_PASSWORD` via variable d'environnement obligatoire.
+- `README.md` utilise un placeholder HaloPSA.
+- Rapport de rebaseline Lot 2 disponible : `gestion-de-projet/sprints/sprint-2-lot2-rebaseline-report.md`.
+
+Restrictions maintenues :
+
+- Aucune extraction réelle HaloPSA.
+- Aucun appel réseau HaloPSA.
+- Aucun dataset réel.
+- Aucun entraînement sur données HaloPSA.
+- Aucun secret, dump, export sensible ou log sensible versionné.
+- Go réel requis avant toute donnée HaloPSA : DPA, autorisation client, audit historique Git et conformité complète.
+
+### Risques de reprise
+
+| Risque | Impact | Décision PM |
+| ------ | ------ | ----------- |
+| Visibilité GitHub incomplète | Pilotage PR/issues/milestones partiel | Mandater DevOps pour rétablir l'authentification et produire un état GitHub complet. |
+| Absence de CI versionnée constatée | Risque qualité avant Lot 5 | Ne pas attendre Sprint 6 pour cadrer une CI minimale. |
+| État sprint non reconfirmé | Validation de jalon impossible | Obtenir un rapport scrum-master avant tout Go de lot. |
+| URL métier documentée publiquement | Risque conformité / exposition contexte client | Faire confirmer par conformité si maintien acceptable. |
 
 ## Prochaine action de pilotage
 
-Mandater Eisenhower pour décliner cette planification globale en backlog complet, sprints détaillés, issues GitHub et dépendances opérationnelles, sans démarrer le Lot 3 tant que le Go Lot 2 n'est pas obtenu.
+Mandater Eisenhower pour piloter Lot 3 préparatoire synthétique : dataset pairwise synthétique, labels, split 70/30, contrôles anti-fuite, baseline ML et tests Python 3.11+. En parallèle, mandater Tesla pour rétablir la visibilité GitHub complète dès authentification disponible et cadrer une CI minimale.

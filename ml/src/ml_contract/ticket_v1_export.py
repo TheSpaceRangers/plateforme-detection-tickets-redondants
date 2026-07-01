@@ -12,11 +12,13 @@ try:  # pragma: no cover - supports module and direct script execution.
     from .dry_run_report import build_ticket_dataset_v1_dry_run_report
     from .secure_export import DEFAULT_TTL_HOURS, build_blocked_secure_export_report, normalize_block_reason
     from .storage_guard import validate_secure_output_path
+    from .synthetic_source import synthetic_ticket_source_records
 except ImportError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from src.ml_contract.dry_run_report import build_ticket_dataset_v1_dry_run_report
     from src.ml_contract.secure_export import DEFAULT_TTL_HOURS, build_blocked_secure_export_report, normalize_block_reason
     from src.ml_contract.storage_guard import validate_secure_output_path
+    from src.ml_contract.synthetic_source import synthetic_ticket_source_records
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -46,7 +48,9 @@ def _dispatch(args: argparse.Namespace) -> int:
 def _run_dry_mode(*, output_path_attempted: bool) -> int:
     """Run the default dry-run mode without writing any output file."""
 
-    report = build_ticket_dataset_v1_dry_run_report(_synthetic_safe_records(), output_path_attempted=output_path_attempted)
+    report = build_ticket_dataset_v1_dry_run_report(
+        synthetic_ticket_source_records(), output_path_attempted=output_path_attempted
+    )
     _emit_report(report)
     return 0 if report["status"] == "pass" else 2
 
@@ -81,33 +85,6 @@ def _emit_report(report: dict[str, object]) -> None:
     """Write only aggregate report JSON to stdout."""
 
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
-
-
-def _synthetic_safe_records() -> list[dict[str, object]]:
-    """Return non-real ticket-like records for dry-run validation only."""
-
-    return [
-        {
-            "summary": "Connexion applicative impossible depuis le portail interne",
-            "details": "Message d erreur generique apres authentification standard",
-            "ticket_created_at": "2025-01-15T09:30:00+00:00",
-        },
-        {
-            "summary": "Lenteur lors de la synchronisation documentaire",
-            "details": "Plusieurs utilisateurs signalent un delai sur une operation recurrente",
-            "ticket_created_at": "2025-02-03",
-        },
-        {
-            "summary": "Archive historique hors scope",
-            "details": "Cas synthetique exclu par date de cadrage",
-            "ticket_created_at": "2024-12-31",
-        },
-        {
-            "summary": "Date absente exclue",
-            "details": "Cas synthetique sans date de creation exploitable",
-            "ticket_created_at": None,
-        },
-    ]
 
 
 if __name__ == "__main__":

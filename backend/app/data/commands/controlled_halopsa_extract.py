@@ -5,9 +5,11 @@ connections, or persist tickets at import time. The default CLI path validates
 runtime configuration and then stops unless an explicit network transport and a
 repository-backed ingestion service are injected by integration code.
 
-HALO_PAGE_SIZE defaults to 1 when absent and is passed through when strictly positive.
+HALO_PAGE_SIZE defaults to 1 and is capped by HALOPSA_MAX_PAGE_SIZE.
+HALOPSA_MAX_TOTAL_TICKETS defaults to a safe one-page ceiling.
 HALO_PAGE_NO defaults to 1 when absent.
-HALOPSA_ENABLE_NETWORK=true is required before the real HTTP transport is built.
+SYNAPPSE_COMPLIANCE_GO_REAL_EXTRACTION=true is required before any real network or write wiring.
+HALOPSA_ENABLE_NETWORK=true is still required before the real HTTP transport is built.
 """
 
 from __future__ import annotations
@@ -26,10 +28,13 @@ from backend.app.data.extractors.halopsa_client import HaloPsaTicketClient, Halo
 from backend.app.data.extractors.halopsa_config import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_PAGE_NO,
+    DEFAULT_RATE_LIMIT_PER_MINUTE,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     DEFAULT_TICKETS_PATH,
     DEFAULT_TOKEN_PATH,
     SAFE_DEFAULT_PAGE_SIZE,
+    SAFE_MAX_PAGE_SIZE,
+    SAFE_MAX_TOTAL_TICKETS,
     HaloPsaExtractorConfig,
     InvalidHaloPsaConfigurationError,
 )
@@ -47,7 +52,6 @@ from backend.app.services.ticket_ingestion_service import TicketIngestionService
 _REAL_HALOPSA_HTTP_TRANSPORT_TYPE = HaloPsaHttpTransport
 
 REQUIRED_ENV_KEYS: tuple[str, ...] = (
-    "SYNAPPSE_AGENT_ID_HMAC_SECRET",
     "HALOPSA_BASE_URL",
     "HALOPSA_CLIENT_ID",
     "HALOPSA_CLIENT_SECRET",
@@ -55,9 +59,11 @@ REQUIRED_ENV_KEYS: tuple[str, ...] = (
     "HALO_SCOPE",
 )
 NETWORK_ENABLE_KEY = "HALOPSA_ENABLE_NETWORK"
+COMPLIANCE_GO_REAL_EXTRACTION_KEY = "SYNAPPSE_COMPLIANCE_GO_REAL_EXTRACTION"
+INCLUDE_AGENT_PSEUDONYM_KEY = "SYNAPPSE_INCLUDE_AGENT_PSEUDONYM"
 TRUE_ENV_VALUES = frozenset(("1", "true", "yes", "on"))
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_LOCAL_DOTENV_PATH = PROJECT_ROOT / "ml" / ".env"
+DEFAULT_LOCAL_DOTENV_PATH = PROJECT_ROOT / "backend" / ".env"
 
 
 class DotenvLoader(Protocol):
@@ -105,7 +111,19 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
     if missing_keys:
         raise ControlledExtractionError(f"Missing required runtime variables: {', '.join(missing_keys)}")
 
-    page_size = _parse_page_size(env.get("HALO_PAGE_SIZE"))
+    configured_max_page_size = _parse_capped_positive_int(
+        env.get("HALOPSA_MAX_PAGE_SIZE"),
+        default_value=SAFE_MAX_PAGE_SIZE,
+        hard_cap=SAFE_MAX_PAGE_SIZE,
+        field_name="HALOPSA_MAX_PAGE_SIZE",
+    )
+    max_total_tickets = _parse_capped_positive_int(
+        env.get("HALOPSA_MAX_TOTAL_TICKETS"),
+        default_value=SAFE_MAX_TOTAL_TICKETS,
+        hard_cap=SAFE_MAX_TOTAL_TICKETS,
+        field_name="HALOPSA_MAX_TOTAL_TICKETS",
+    )
+    page_size = _parse_page_size(env.get("HALO_PAGE_SIZE"), configured_max_page_size=configured_max_page_size)
     page_no = _parse_positive_int(
         env.get("HALO_PAGE_NO"),
         default_value=DEFAULT_PAGE_NO,
@@ -118,6 +136,7 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
         tenant=env["HALOPSA_TENANT"].strip(),
         scope=env["HALO_SCOPE"].strip(),
         page_size=page_size,
+        max_total_tickets=max_total_tickets,
         page_no=page_no,
         request_timeout_seconds=_parse_positive_float(
             env.get("HALOPSA_REQUEST_TIMEOUT_SECONDS"),
@@ -128,6 +147,11 @@ def build_config_from_env(env: Mapping[str, str]) -> HaloPsaExtractorConfig:
             env.get("HALOPSA_MAX_RETRIES"),
             default_value=DEFAULT_MAX_RETRIES,
             field_name="HALOPSA_MAX_RETRIES",
+        ),
+        rate_limit_per_minute=_parse_positive_int(
+            env.get("HALOPSA_RATE_LIMIT_PER_MINUTE"),
+            default_value=DEFAULT_RATE_LIMIT_PER_MINUTE,
+            field_name="HALOPSA_RATE_LIMIT_PER_MINUTE",
         ),
         token_path=env.get("HALOPSA_TOKEN_PATH", DEFAULT_TOKEN_PATH).strip() or DEFAULT_TOKEN_PATH,
         tickets_path=env.get("HALOPSA_TICKETS_PATH", DEFAULT_TICKETS_PATH).strip() or DEFAULT_TICKETS_PATH,
@@ -156,6 +180,13 @@ def run_controlled_halopsa_extract(
 
     safe_logger = logger or logging.getLogger(__name__)
     config = build_config_from_env(env)
+    if _requires_real_extraction_approval(
+        env=env,
+        transport=transport,
+        repository=repository,
+        ingestion_service=ingestion_service,
+    ) and not _has_compliance_go_for_real_extraction(env):
+        raise ControlledExtractionError("Compliance GO for real HaloPSA extraction is not explicitly enabled")
     if _is_real_http_transport(transport) and not _is_network_enabled(env):
         raise ControlledExtractionError("HaloPSA network transport is not explicitly enabled")
     if isinstance(repository, PostgresTicketRepository) and not is_postgres_write_enabled(env):
@@ -165,7 +196,7 @@ def run_controlled_halopsa_extract(
     service = ingestion_service or _build_ingestion_service(config, selected_transport, selected_repository)
 
     safe_logger.info("Controlled HaloPSA extraction started")
-    result = service.ingest_tickets(include_agent_pseudonym=True)
+    result = service.ingest_tickets(include_agent_pseudonym=_should_include_agent_pseudonym(env))
     ignored_count = getattr(result, "ignored_count", 0)
     safe_logger.info(
         "Controlled HaloPSA extraction completed with extracted_count=%s stored_count=%s ignored_count=%s",
@@ -230,6 +261,8 @@ def _build_explicit_network_transport(env: Mapping[str, str]) -> HaloPsaTranspor
     """Create the real transport only when the network enable flag is explicitly true."""
 
     if _is_network_enabled(env):
+        if not _has_compliance_go_for_real_extraction(env):
+            raise ControlledExtractionError("Compliance GO for real HaloPSA extraction is not explicitly enabled")
         return HaloPsaHttpTransport()
     return None
 
@@ -243,6 +276,8 @@ def _build_explicit_postgres_repository(
 
     if ingestion_service is not None or transport is None:
         return None
+    if not is_postgres_write_enabled(env):
+        raise ControlledExtractionError("PostgreSQL ticket writes are not explicitly enabled")
     try:
         postgres_config = PostgresConnectionConfig.from_env(env)
     except PostgresConfigurationError as exc:
@@ -275,14 +310,51 @@ def _is_network_enabled(env: Mapping[str, str]) -> bool:
     return env.get(NETWORK_ENABLE_KEY, "").strip().lower() in TRUE_ENV_VALUES
 
 
+def _has_compliance_go_for_real_extraction(env: Mapping[str, str]) -> bool:
+    """Return whether compliance explicitly approved real extraction side effects."""
+
+    return env.get(COMPLIANCE_GO_REAL_EXTRACTION_KEY, "").strip().lower() in TRUE_ENV_VALUES
+
+
+def _should_include_agent_pseudonym(env: Mapping[str, str]) -> bool:
+    """Return whether agent pseudonym storage is explicitly enabled after compliance GO."""
+
+    if env.get(INCLUDE_AGENT_PSEUDONYM_KEY, "").strip().lower() not in TRUE_ENV_VALUES:
+        return False
+    if not _has_compliance_go_for_real_extraction(env):
+        raise ControlledExtractionError("Agent pseudonym export requires explicit compliance GO")
+    if not env.get("SYNAPPSE_AGENT_ID_HMAC_SECRET", "").strip():
+        raise ControlledExtractionError("Agent pseudonym export requires SYNAPPSE_AGENT_ID_HMAC_SECRET")
+    return True
+
+
+def _requires_real_extraction_approval(
+    *,
+    env: Mapping[str, str],
+    transport: HaloPsaTransport | None,
+    repository: TicketRepository | None,
+    ingestion_service: IngestionService | None,
+) -> bool:
+    """Detect runtime paths that could perform real network calls or database writes."""
+
+    if ingestion_service is not None and transport is None and repository is None:
+        return False
+    return (
+        _is_network_enabled(env)
+        or is_postgres_write_enabled(env)
+        or _is_real_http_transport(transport)
+        or isinstance(repository, PostgresTicketRepository)
+    )
+
+
 def _is_real_http_transport(transport: HaloPsaTransport | None) -> bool:
     """Detect the real HTTP transport without depending on monkeypatchable symbols."""
 
     return isinstance(transport, _REAL_HALOPSA_HTTP_TRANSPORT_TYPE)
 
 
-def _parse_page_size(raw_page_size: str | None) -> int:
-    """Parse HALO_PAGE_SIZE with a safe default and no application cap."""
+def _parse_page_size(raw_page_size: str | None, *, configured_max_page_size: int) -> int:
+    """Parse HALO_PAGE_SIZE with a safe default and strict application cap."""
 
     if raw_page_size is None or not raw_page_size.strip():
         return SAFE_DEFAULT_PAGE_SIZE
@@ -292,7 +364,24 @@ def _parse_page_size(raw_page_size: str | None) -> int:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be an integer") from exc
     if page_size <= 0:
         raise ControlledExtractionError("HALO_PAGE_SIZE must be strictly positive")
+    if page_size > configured_max_page_size:
+        raise ControlledExtractionError("HALO_PAGE_SIZE exceeds configured maximum")
     return page_size
+
+
+def _parse_capped_positive_int(
+    raw_value: str | None,
+    *,
+    default_value: int,
+    hard_cap: int,
+    field_name: str,
+) -> int:
+    """Parse a positive integer that cannot exceed the hard safety cap."""
+
+    value = _parse_positive_int(raw_value, default_value=default_value, field_name=field_name)
+    if value > hard_cap:
+        raise ControlledExtractionError(f"{field_name} exceeds hard safety cap")
+    return value
 
 
 def _parse_positive_int(raw_value: str | None, *, default_value: int, field_name: str) -> int:

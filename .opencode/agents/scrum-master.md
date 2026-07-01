@@ -1,7 +1,7 @@
 ---
 name: Eisenhower
 description: "Scrum Master — exécution agile, génération des sprints/US/tâches, coordination des leads."
-mode: primary
+mode: subagent
 temperature: 0.1
 permission:
   read: allow
