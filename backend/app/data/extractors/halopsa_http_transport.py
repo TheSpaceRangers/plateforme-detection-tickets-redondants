@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -19,6 +20,9 @@ class HaloPsaHttpTransportError(RuntimeError):
 class HaloPsaHttpTransport:
     """HTTP transport for HaloPSA OAuth client credentials and ticket retrieval."""
 
+    def __init__(self) -> None:
+        self._last_request_at: float | None = None
+
     def fetch_tickets(self, config: HaloPsaExtractorConfig) -> Iterable[Mapping[str, object]]:
         """Fetch one bounded ticket page from HaloPSA without logging raw provider data."""
 
@@ -31,8 +35,9 @@ class HaloPsaHttpTransport:
             body=None,
             timeout_seconds=config.request_timeout_seconds,
             max_retries=config.max_retries,
+            rate_limit_per_minute=config.rate_limit_per_minute,
         )
-        return tuple(self._extract_ticket_items(response))
+        return tuple(self._extract_ticket_items(response)[: config.max_total_tickets])
 
     def _fetch_access_token(self, config: HaloPsaExtractorConfig) -> str:
         """Request an OAuth client credentials token from HaloPSA."""
@@ -53,6 +58,7 @@ class HaloPsaHttpTransport:
             body=urlencode(form_values).encode("utf-8"),
             timeout_seconds=config.request_timeout_seconds,
             max_retries=config.max_retries,
+            rate_limit_per_minute=config.rate_limit_per_minute,
         )
         token = response.get("access_token")
         if not isinstance(token, str) or not token.strip():
@@ -62,6 +68,7 @@ class HaloPsaHttpTransport:
     def _build_tickets_url(self, config: HaloPsaExtractorConfig) -> str:
         """Build a bounded ticket endpoint URL using only non-sensitive query values."""
 
+        config.validate()
         endpoint = _build_halopsa_url(config.base_url, config.tickets_path)
         separator = "&" if "?" in endpoint else "?"
         query_params = {
@@ -80,11 +87,13 @@ class HaloPsaHttpTransport:
         body: bytes | None,
         timeout_seconds: float,
         max_retries: int,
+        rate_limit_per_minute: int,
     ) -> Mapping[str, Any]:
         """Execute a bounded JSON request and return parsed JSON without sensitive details in errors."""
 
         last_error: Exception | None = None
         for _attempt in range(max_retries + 1):
+            self._respect_rate_limit(rate_limit_per_minute)
             request = Request(url=url, data=body, headers=dict(headers), method=method)
             try:
                 with urlopen(request, timeout=timeout_seconds) as response:  # nosec B310: explicit opt-in transport
@@ -100,6 +109,18 @@ class HaloPsaHttpTransport:
             except (URLError, TimeoutError, json.JSONDecodeError) as exc:
                 last_error = exc
         raise HaloPsaHttpTransportError("HaloPSA HTTP request failed after bounded retries") from last_error
+
+    def _respect_rate_limit(self, rate_limit_per_minute: int) -> None:
+        """Throttle outbound requests according to the configured minute rate."""
+
+        min_interval_seconds = 60.0 / rate_limit_per_minute
+        now = time.monotonic()
+        if self._last_request_at is not None:
+            elapsed_seconds = now - self._last_request_at
+            if elapsed_seconds < min_interval_seconds:
+                time.sleep(min_interval_seconds - elapsed_seconds)
+                now = time.monotonic()
+        self._last_request_at = now
 
     def _extract_ticket_items(self, response: Mapping[str, Any]) -> tuple[Mapping[str, object], ...]:
         """Return provider ticket mappings from accepted HaloPSA list containers."""

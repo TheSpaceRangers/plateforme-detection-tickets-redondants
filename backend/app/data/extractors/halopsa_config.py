@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 SAFE_DEFAULT_PAGE_SIZE = 1
+SAFE_MAX_PAGE_SIZE = 50
+SAFE_MAX_TOTAL_TICKETS = 50
 DEFAULT_PAGE_NO = 1
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_RETRIES = 2
+DEFAULT_RATE_LIMIT_PER_MINUTE = 30
 DEFAULT_TOKEN_PATH = "/auth/token"
 DEFAULT_TICKETS_PATH = "/api/Tickets"
 
@@ -26,9 +29,11 @@ class HaloPsaExtractorConfig:
     tenant: str
     scope: str = ""
     page_size: int = SAFE_DEFAULT_PAGE_SIZE
+    max_total_tickets: int = SAFE_MAX_TOTAL_TICKETS
     page_no: int = DEFAULT_PAGE_NO
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
     max_retries: int = DEFAULT_MAX_RETRIES
+    rate_limit_per_minute: int = DEFAULT_RATE_LIMIT_PER_MINUTE
     token_path: str = DEFAULT_TOKEN_PATH
     tickets_path: str = DEFAULT_TICKETS_PATH
 
@@ -53,6 +58,20 @@ class HaloPsaExtractorConfig:
             raise InvalidHaloPsaConfigurationError("HaloPSA page_size must be an integer")
         if self.page_size <= 0:
             raise InvalidHaloPsaConfigurationError("HaloPSA page_size must be strictly positive")
+        if self.page_size > SAFE_MAX_PAGE_SIZE:
+            raise InvalidHaloPsaConfigurationError(
+                f"HaloPSA page_size must be lower than or equal to {SAFE_MAX_PAGE_SIZE}"
+            )
+        if not isinstance(self.max_total_tickets, int) or isinstance(self.max_total_tickets, bool):
+            raise InvalidHaloPsaConfigurationError("HaloPSA max_total_tickets must be an integer")
+        if self.max_total_tickets <= 0:
+            raise InvalidHaloPsaConfigurationError("HaloPSA max_total_tickets must be strictly positive")
+        if self.max_total_tickets > SAFE_MAX_TOTAL_TICKETS:
+            raise InvalidHaloPsaConfigurationError(
+                f"HaloPSA max_total_tickets must be lower than or equal to {SAFE_MAX_TOTAL_TICKETS}"
+            )
+        if self.page_size > self.max_total_tickets:
+            raise InvalidHaloPsaConfigurationError("HaloPSA page_size must not exceed max_total_tickets")
         if not isinstance(self.page_no, int) or isinstance(self.page_no, bool):
             raise InvalidHaloPsaConfigurationError("HaloPSA page_no must be an integer")
         if self.page_no <= 0:
@@ -61,6 +80,10 @@ class HaloPsaExtractorConfig:
             raise InvalidHaloPsaConfigurationError("HaloPSA request timeout must be strictly positive")
         if self.max_retries < 0:
             raise InvalidHaloPsaConfigurationError("HaloPSA max_retries must be zero or positive")
+        if not isinstance(self.rate_limit_per_minute, int) or isinstance(self.rate_limit_per_minute, bool):
+            raise InvalidHaloPsaConfigurationError("HaloPSA rate_limit_per_minute must be an integer")
+        if self.rate_limit_per_minute <= 0:
+            raise InvalidHaloPsaConfigurationError("HaloPSA rate_limit_per_minute must be strictly positive")
         if not self.token_path.strip():
             raise InvalidHaloPsaConfigurationError("HaloPSA token_path must be configured")
         if not self.tickets_path.strip():
@@ -72,5 +95,7 @@ class HaloPsaExtractorConfig:
         self.validate()
         return (
             f"HaloPsaExtractorConfig(page_size={self.page_size}, "
-            f"page_no={self.page_no}, max_retries={self.max_retries})"
+            f"max_total_tickets={self.max_total_tickets}, "
+            f"page_no={self.page_no}, max_retries={self.max_retries}, "
+            f"rate_limit_per_minute={self.rate_limit_per_minute})"
         )

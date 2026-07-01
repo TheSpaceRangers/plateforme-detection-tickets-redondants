@@ -145,6 +145,34 @@ def test_preprocess_sanitizes_additional_obvious_identifiers_in_text_fields() ->
     assert detect_pii(str(dataset[0]["details"])) == ()
 
 
+def test_preprocess_sanitizes_extended_structured_pii_patterns() -> None:
+    """Extended structured PII patterns are removed from synthetic text."""
+
+    tickets = [
+        {
+            "summary": (
+                "Poste 00:1A:2B:3C:4D:5E vu en IPv6 "
+                "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+            ),
+            "details": (
+                "IBAN FR76 3000 6000 0112 3456 7890 189, "
+                "carte 4111 1111 1111 1111, NIR 1 84 12 75 123 456 78, "
+                "SIRET 123 456 789 00010, external_ticket_id: EXT-42"
+            ),
+        }
+    ]
+
+    dataset = build_preprocessed_ticket_dataset(tickets)
+
+    assert dataset[0]["summary"] == "Poste [DEVICE_IDENTIFIER] vu en IPv6 [IP]"
+    assert "[FINANCIAL_IDENTIFIER]" in str(dataset[0]["details"])
+    assert "[OFFICIAL_IDENTIFIER]" in str(dataset[0]["details"])
+    assert "[ORGANIZATION_IDENTIFIER]" in str(dataset[0]["details"])
+    assert "[IDENTIFIER]" in str(dataset[0]["details"])
+    assert detect_pii(str(dataset[0]["summary"])) == ()
+    assert detect_pii(str(dataset[0]["details"])) == ()
+
+
 def test_preprocess_does_not_sanitize_plain_identifier_words_without_values() -> None:
     """Identifier-like words without values are not treated as residual PII."""
 

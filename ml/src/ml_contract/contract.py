@@ -45,6 +45,8 @@ REPORT_KEYS: tuple[str, ...] = (
     "forbidden_column_count",
     "exact_timestamp_column_count",
     "raw_text_column_count",
+    "quality_report",
+    "lot3_readiness",
     "gates",
 )
 

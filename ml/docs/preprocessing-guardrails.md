@@ -6,7 +6,7 @@ Cette note formalise l'architecture d'intégration ML entre une future extractio
 
 - **Aucune extraction HaloPSA réelle** n'est réalisée à cette étape.
 - **Aucune donnée réelle** n'est utilisée ou attendue.
-- **Aucun flux opérationnel** extraction, stockage ou export n'est encore branché côté ML.
+- **Aucun flux opérationnel** extraction, stockage, export ou entraînement n'est encore branché côté ML.
 - Le document décrit le contrat obligatoire pour le futur branchement.
 
 ## État actuel observé
@@ -14,7 +14,7 @@ Cette note formalise l'architecture d'intégration ML entre une future extractio
 - `ml/src/preprocessing/tickets.py` expose `build_preprocessed_ticket_dataset()`.
 - `build_preprocessed_ticket_dataset()` sanitise les champs texte via `sanitize_ticket_text_fields()` puis applique `assert_no_residual_pii()` avant de retourner le dataset.
 - `agent_id` est supprimé par défaut des enregistrements prétraités.
-- Si `AgentIdPolicy(include_pseudonymized=True)` est demandé, `agent_id` devient `agent_id_pseudonym` via HMAC-SHA-256.
+- Si `AgentIdPolicy(include_pseudonymized=True)` est demandé, `agent_id` devient `agent_id_pseudonym` via HMAC-SHA-256 uniquement dans un flux technique explicitement validé ; ce champ reste interdit par défaut dans tout dataset ML et tout rapport ML.
 - Le secret runtime attendu pour la pseudonymisation est `SYNAPPSE_AGENT_ID_HMAC_SECRET`.
 - En absence de secret, la pseudonymisation échoue en fail-closed via `MissingPseudonymizationSecretError`.
 
@@ -39,24 +39,43 @@ Champs autorisés par défaut après preprocessing :
 
 - `summary` nettoyé ;
 - `details` nettoyé ;
-- champs métier non sensibles explicitement validés lors de l'exploration de données ;
-- `agent_id_pseudonym` uniquement si une décision d'architecture valide son besoin et si le secret HMAC runtime est présent.
+- champs métier non sensibles explicitement validés lors de l'exploration de données.
 
 Champs exclus par défaut :
 
 - `agent_id` brut ;
+- `agent_id_pseudonym` en dataset/rapport ML par défaut ;
+- `external_ticket_id`, considéré comme identifiant indirect non exportable ML ;
 - contenu ticket brut ;
+- payloads source, dumps JSON et raw IDs ;
 - identifiants client, utilisateur, compte, login ou tout champ non validé ;
 - tout champ source absent de l'allowlist.
 
 ## Règles PII/HMAC obligatoires
 
 - `agent_id` reste exclu par défaut.
-- `agent_id_pseudonym` n'est autorisé que par opt-in explicite.
+- `agent_id_pseudonym` n'est autorisé que par opt-in explicite pour un flux technique validé ; il reste interdit par défaut dans les datasets et rapports ML.
 - La pseudonymisation HMAC doit utiliser `SYNAPPSE_AGENT_ID_HMAC_SECRET` lu à l'exécution.
 - Le secret ne doit jamais être loggé, exporté, affiché ou documenté avec sa valeur.
 - Les logs ne doivent contenir ni texte de ticket, ni PII, ni secret ; seules des métadonnées non sensibles sont admises, par exemple nombre de lignes traitées ou statut d'échec.
 - Le contrôle PII résiduelle est bloquant avant export, stockage et training.
+
+## Limites du nettoyage PII en texte libre
+
+Le détecteur couvre des catégories fréquentes et raisonnables pour des tickets libres : emails, téléphones français, IPv4/IPv6, URLs, MAC addresses, identifiants explicites (`login`, `user_id`, `external_ticket_id`, etc.), IBAN/cartes de paiement au format apparent, NIR français et SIRET/SIREN précédés d'un libellé. Il fonctionne en fail-closed sur ces catégories : une détection résiduelle bloque le flux.
+
+Limites assumées sans sur-promesse :
+
+- les noms/prénoms en texte libre ne sont pas garantis, car les faux positifs seraient élevés sans référentiel validé ;
+- les contextes métier locaux, surnoms, noms d'équipes, sites, contrats ou applications peuvent indirectement identifier une personne ou une organisation sans correspondre à un motif fiable ;
+- les formats obfusqués, incomplets, avec fautes ou très spécifiques au client peuvent échapper aux regex ;
+- le nettoyage automatique ne remplace pas une revue conformité/sécurité avant toute donnée réelle.
+
+Conclusion opérationnelle : aucun branchement sur données réelles, extraction HaloPSA, entraînement, export durable ou partage de dataset n'est autorisé sans GO conformité explicite, revue du schéma réel et validation des colonnes.
+
+## Dataset synthétique préparatoire
+
+Le dataset synthétique ML est limité à des tickets fictifs construits dans le code pour exercer les garde-fous : PII fictive, doublons, valeurs manquantes, dates hors scope et volumétrie minimale de split. Il ne doit jamais être remplacé par des données HaloPSA réelles sans GO conformité explicite.
 
 ## Périmètre temporel EDA/ML
 
@@ -75,6 +94,13 @@ Interdictions pour le futur branchement :
 - conserver des dumps JSON bruts pour debug ;
 - exporter un dataset avant passage par `build_preprocessed_ticket_dataset()` ;
 - entraîner un modèle sur des tickets non nettoyés.
+
+## Préparation labels/pairwise/split Lot 3 synthétique
+
+- Les labels synthétiques ne servent qu'à préparer les garde-fous et la forme du futur pipeline ; ils ne doivent pas déclencher d'entraînement avant GO conformité.
+- La future génération pairwise devra éviter la fuite : un groupe de redondance ou un ticket source et toutes ses paires dérivées restent dans un seul split.
+- Les paires inverses `(A, B)` / `(B, A)` ne doivent jamais être réparties entre train et test.
+- Le split prévu après GO est groupé et stratifié 70/30 avec `random_state=42`, après validation des labels et exploration du schéma réel.
 
 ## Conditions Go avant implémentation opérationnelle
 

@@ -9,6 +9,7 @@ __all__ = [
     "secure_export",
     "storage",
     "storage_guard",
+    "synthetic_source",
     "ticket_dataset_v1_dry_run",
     "ticket_dataset_v1_export",
     "ticket_v1_export",

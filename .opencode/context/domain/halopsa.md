@@ -4,8 +4,8 @@
 
 | Champ          | Valeur                                  |
 | -------------- | --------------------------------------- |
-| Instance       | wiptservicedesk.halopsa.com             |
-| URL base API   | https://wiptservicedesk.halopsa.com/api |
+| Instance       | <tenant>.halopsa.com             |
+| URL base API   | https://<tenant>.halopsa.com/api |
 | Auth           | OAuth2 — grant_type: client_credentials |
 | Token endpoint | POST /auth/token (scope: all)           |
 | Format         | JSON                                    |

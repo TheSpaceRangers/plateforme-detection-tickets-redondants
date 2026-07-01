@@ -43,7 +43,7 @@ Renseigner les valeurs dans chaque `.env` :
 
 ```bash
 # HaloPSA
-HALOPSA_BASE_URL=https://wiptservicedesk.halopsa.com
+HALOPSA_BASE_URL=https://<tenant>.halopsa.com
 HALOPSA_CLIENT_ID=<votre_client_id>
 HALOPSA_CLIENT_SECRET=<votre_client_secret>
 

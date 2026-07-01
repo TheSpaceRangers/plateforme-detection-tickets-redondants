@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-synappse_tickets}
       POSTGRES_USER: ${POSTGRES_USER:-synappse}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synappse_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be provided}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
